@@ -6,7 +6,7 @@ argument-hint: "<StrategyName> [smoke|full|oos]"
 
 # /validate-strategy — kiểm chứng strategy
 
-Luật: `.claude/rules/quant-strategy.md`. Thiết kế và ngưỡng: `docs_vn/signal-bot-workflow.md` (mục 7).
+Luật: `.claude/rules/quant-strategy.md`. Thiết kế và ngưỡng: `docs/signal-bot-workflow.md` (mục 7).
 
 Tham số: `$ARGUMENTS` = `<StrategyName> [mode]`
 - `smoke` (mặc định khi đang code): dải 3 tháng gần nhất trong IS, chỉ để chắc strategy chạy được và có tín hiệu.

@@ -9,7 +9,7 @@ argument-hint: "<module hoặc đường dẫn, ví dụ freqtrade.freqai | docs
 Làm và commit trực tiếp trên `develop` (xem `.claude/rules/git-workflow.md`). Một lần chạy = cắt **một** phần = một commit.
 
 ## Không bao giờ cắt
-`LICENSE`, `NOTICE`, `freqtrade/optimize/` (cần backtest), `freqtrade/exchange/exchange.py`, `freqtrade/exchange/binance*.py`, `freqtrade/rpc/telegram.py`, `freqtrade/rpc/webhook.py`, `freqtrade/persistence/`, `freqtrade/strategy/`, `freqtrade/data/`, `freqtrade/plugins/`, `docs_vn/`, `user_data/`.
+`LICENSE`, `NOTICE`, `freqtrade/optimize/` (cần backtest), `freqtrade/exchange/exchange.py`, `freqtrade/exchange/binance*.py`, `freqtrade/rpc/telegram.py`, `freqtrade/rpc/webhook.py`, `freqtrade/persistence/`, `freqtrade/strategy/`, `freqtrade/data/`, `freqtrade/plugins/`, `docs/`, `user_data/`.
 
 ## 1. Phân tích
 - Code Python: `.venv/Scripts/python.exe .claude/skills/trim-core/find_importers.py <module>`
@@ -38,6 +38,6 @@ Thêm một backtest ngắn nếu đã có dữ liệu:
 - `mypy freqtrade` nếu đã sửa code Python trong core.
 
 ## 4. Ghi lại
-- Thêm một dòng vào `docs_vn/trim-log.md`: ngày, phần đã cắt, số file/dòng, chỗ đã sửa, kết quả kiểm chứng.
-- Cập nhật `docs_vn/structure.md` nếu bản đồ thư mục thay đổi.
+- Thêm một dòng vào `docs/trim-log.md`: ngày, phần đã cắt, số file/dòng, chỗ đã sửa, kết quả kiểm chứng.
+- Cập nhật `docs/structure.md` nếu bản đồ thư mục thay đổi.
 - Commit bằng `/commit` với type `trim`, ví dụ: `trim(core): remove freqai module and its tests`.

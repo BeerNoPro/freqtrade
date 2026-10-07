@@ -5,8 +5,6 @@ Dockerfile
 .devcontainer/
 docker/
 docs/
-# Needed by requirements-dev.txt (devcontainer build)
-!docs/requirements-docs.txt
 dist/
 tests/
 site/

@@ -1,6 +1,6 @@
 # Luật phát triển strategy (quant)
 
-Thiết kế gốc: [docs_vn/signal-bot-workflow.md](../../docs_vn/signal-bot-workflow.md). Logic engine: [docs_vn/lifecycle.md](../../docs_vn/lifecycle.md).
+Thiết kế gốc: [docs/signal-bot-workflow.md](../../docs/signal-bot-workflow.md). Logic engine: [docs/lifecycle.md](../../docs/lifecycle.md).
 
 ## Viết strategy
 - File strategy nằm trong `user_data/strategies/`, kế thừa `IStrategy`, `INTERFACE_VERSION = 3`.

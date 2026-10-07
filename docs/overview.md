@@ -79,4 +79,4 @@ Liệt kê đầy đủ các khối chức năng có sẵn trong source (chi ti�
 - [structure.md](structure.md) — Bản đồ cấu trúc source code
 - [lifecycle.md](lifecycle.md) — Vòng đời chạy của bot
 - [Tài liệu chính thức](https://www.freqtrade.io) — tham khảo đầy đủ
-- [bot-basics.md](bot-basics.md), [strategy-101.md](strategy-101.md) — doc gốc tiếng Anh
+- [signal-bot-workflow.md](signal-bot-workflow.md) — Thiết kế bot tín hiệu

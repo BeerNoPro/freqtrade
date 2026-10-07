@@ -104,12 +104,6 @@ jobs:
       run: |
         python build_helpers/extract_config_json_schema.py
 
-    - name: Run command docs partials extract
-      # This must be kept before the repository check to ensure that the docs are up-to-date
-      if: ${{ (matrix.python-version == '3.13') }}
-      run: |
-        python build_helpers/create_command_partials.py
-
     - name: Check for repository changes - *nix
       if: ${{ (runner.os != 'Windows') }}
       run: |
@@ -220,39 +214,6 @@ jobs:
 
     - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
 
-  docs-check:
-    name: "Documentation build"
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        persist-credentials: false
-
-    - name: Documentation syntax
-      run: |
-        ./tests/test_docs.sh
-
-    - name: Install uv and Python 🐍
-      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-      with:
-        activate-environment: true
-        python-version: "3.13"
-        enable-cache: false
-
-    - name: Documentation build
-      run: |
-        uv pip install -r docs/requirements-docs.txt
-        mkdocs build
-
-    - name: Discord notification
-      uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1.16.0
-      if: failure() && ( github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
-      with:
-          color: '#FF0000' # red
-          title: Freqtrade doc test failed!
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}  # zizmor: ignore[secrets-outside-env] Intentionally not using environment variable.
-
-
   build-linux-online:
     # Run pytest with "live" checks
     name: "Online / live tests"
@@ -313,7 +274,6 @@ jobs:
     name: "Build"
     needs: [
       tests,
-      docs-check,
       mypy-version-check,
       pre-commit,
     ]
