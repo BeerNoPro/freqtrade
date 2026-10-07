@@ -24,7 +24,9 @@ Làm và commit trực tiếp trên `develop` (xem `.claude/rules/git-workflow.m
 - Xóa các mục liên quan trong `freqtrade/commands/arguments.py` (subcommand), `config_schema`, resolver nếu có.
 
 ## 3. Kiểm chứng (bắt buộc, tất cả phải qua)
+`mypy` chạy với `ignore_missing_imports = true` nên **không** bắt được import tới module đã xóa — luôn chạy `check_imports.py` (quét cả import lười trong hàm).
 ```bash
+.venv/Scripts/python.exe .claude/skills/trim-core/check_imports.py
 .venv/Scripts/python.exe -c "import freqtrade.main, freqtrade.freqtradebot, freqtrade.optimize.backtesting"
 .venv/Scripts/freqtrade.exe --version
 .venv/Scripts/freqtrade.exe list-strategies --config user_data/config.json
