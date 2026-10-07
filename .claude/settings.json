@@ -5,6 +5,44 @@
       "Read",
       "Glob",
       "Grep",
+      "Edit",
+      "Write",
+      "MultiEdit",
+      "NotebookEdit",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(.venv/Scripts/freqtrade.exe:*)",
+      "Bash(.venv/Scripts/pytest.exe:*)",
+      "Bash(.venv/Scripts/ruff.exe:*)",
+      "Bash(.venv/Scripts/mypy.exe:*)",
+      "Bash(./.venv/Scripts/python.exe:*)",
+      "Bash(./.venv/Scripts/freqtrade.exe:*)",
+      "PowerShell(.venv/Scripts/python.exe:*)",
+      "PowerShell(.venv/Scripts/freqtrade.exe:*)",
+      "PowerShell(.venv/Scripts/pytest.exe:*)",
+      "PowerShell(.venv/Scripts/ruff.exe:*)",
+      "PowerShell(.venv/Scripts/mypy.exe:*)",
+      "PowerShell(.\\.venv\\Scripts\\python.exe:*)",
+      "PowerShell(.\\.venv\\Scripts\\freqtrade.exe:*)",
+      "PowerShell(.\\.venv\\Scripts\\pytest.exe:*)",
+      "PowerShell(.\\.venv\\Scripts\\ruff.exe:*)",
+      "PowerShell(.\\.venv\\Scripts\\mypy.exe:*)",
+      "PowerShell(.\\run.ps1:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "PowerShell(git add:*)",
+      "PowerShell(git commit:*)",
+      "Bash(git switch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git fetch:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(du:*)",
+      "Bash(sort:*)",
+      "Bash(mkdir:*)",
       "Bash(git status:*)",
       "Bash(git log:*)",
       "Bash(git diff:*)",
@@ -57,7 +95,25 @@
       "PowerShell(del:*)",
       "PowerShell(Clear-Content:*)",
       "PowerShell(rm:*)",
-      "PowerShell(ri:*)"
+      "PowerShell(ri:*)",
+      "Bash(git push:*)",
+      "PowerShell(git push:*)",
+      "Bash(git reset --hard:*)",
+      "PowerShell(git reset --hard:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/ruff_fix.py\"",
+            "timeout": 60
+          }
+        ]
+      }
     ]
   }
 }
