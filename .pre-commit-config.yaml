@@ -2,23 +2,10 @@
 # See https://pre-commit.com/hooks.html for more hooks
 repos:
 
-  - repo: local
-    # Keep json schema in sync with the config schema
-    # This will write the files - and fail pre-commit if a file has been changed.
-    hooks:
-      - id: Extract config json schema
-        name: extract-config-json-schema
-        entry: "python build_helpers/extract_config_json_schema.py"
-        language: python
-        pass_filenames: false
-        additional_dependencies: ["python-rapidjson", "jsonschema"]
-
-
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: "v2.3.1"
     hooks:
       - id: mypy
-        exclude: build_helpers
         additional_dependencies:
           - types-cachetools==7.0.0.20260713
           - types-filelock==3.2.7

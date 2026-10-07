@@ -160,7 +160,6 @@ ignore_missing_imports = true
 namespace_packages = false
 warn_unused_ignores = true
 exclude = [
-    '^build_helpers\.py$',
     '^ft_client/build/.*$',
 ]
 plugins = [
@@ -183,7 +182,6 @@ disable_error_code = "attr-defined"
 include = ["freqtrade", "ft_client"]
 exclude = [
   "**/__pycache__",
-  "build_helpers/*.py",
   "ft_client/build/*",
   "build/*",
 ]

@@ -14,9 +14,8 @@ freqtrade/  (repo)
 │                       #   optimize, persistence, plugins, rpc, strategy, ...) + testdata/
 ├── docs/               # Tài liệu tiếng Việt (overview, structure, lifecycle, signal-bot-workflow)
 ├── ft_client/          # Client REST API Python (package freqtrade-client riêng)
-├── scripts/            # Script tiện ích
-├── build_helpers/      # Script build, schema.json
-├── docker/, Dockerfile, docker-compose.yml   # Chạy bằng Docker
+├── scripts/            # Script tiện ích: binance_update_lev_tiers.py (cập nhật bảng đòn bẩy), rest/ws client mẫu
+├── Dockerfile, docker-compose.yml   # Đóng gói & chạy bằng Docker (triển khai VPS)
 ├── requirements*.txt   # Dependency: chính, dev, hyperopt, plot
 ├── pyproject.toml      # Build + cấu hình ruff / mypy / pytest
 ├── setup.sh / setup.ps1 # Cài đặt môi trường

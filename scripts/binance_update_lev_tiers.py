@@ -1,3 +1,10 @@
+"""
+Refresh freqtrade/exchange/binance_leverage_tiers.json from the Binance futures API.
+
+Requires API credentials in FREQTRADE__EXCHANGE__KEY / FREQTRADE__EXCHANGE__SECRET.
+Run from the repository root: .venv/Scripts/python.exe scripts/binance_update_lev_tiers.py
+"""
+
 import json
 import os
 from pathlib import Path

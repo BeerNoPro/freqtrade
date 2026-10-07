@@ -15,7 +15,7 @@ Làm và commit trực tiếp trên `develop` (xem `.claude/rules/git-workflow.m
 - Code Python: `.venv/Scripts/python.exe .claude/skills/trim-core/find_importers.py <module>`
   - Import cấp module (ngoài phần bị cắt) → phải sửa trước khi xóa, nếu không bot sẽ không khởi động.
   - Import lười (trong hàm) → sửa hoặc chặn nhánh code đó (báo lỗi rõ ràng nếu tính năng bị gọi).
-- Phần không phải Python (`docs/`, `.github/`, `build_helpers/`...): `git grep -n "<tên>"` trong `pyproject.toml`, `setup.*`, `Dockerfile`, `mkdocs.yml`, `.github/`, `MANIFEST.in`, `requirements*.txt`.
+- Phần không phải Python (`docs/`, `.github/`, `scripts/`...): `git grep -n "<tên>"` trong `pyproject.toml`, `setup.*`, `Dockerfile`, `docker-compose.yml`, `.github/`, `MANIFEST.in`, `requirements*.txt`.
 - Liệt kê cho người dùng: số file/dòng sẽ xóa, các chỗ phải sửa, rủi ro. **Chờ người dùng đồng ý** rồi mới xóa.
 
 ## 2. Thực hiện
