@@ -39,9 +39,18 @@ def main() -> int:
     if ruff is None:
         return 0
 
-    subprocess.run([ruff, "format", "--quiet", file_path], cwd=PROJECT_DIR, check=False)
+    # Pass a path relative to the project root: on Windows the drive letter case of
+    # CLAUDE_PROJECT_DIR and file_path can differ, which breaks ruff per-file-ignores.
+    try:
+        target = os.path.relpath(os.path.normcase(file_path), os.path.normcase(PROJECT_DIR))
+    except ValueError:
+        target = file_path
+    if target.startswith(".."):
+        return 0
+
+    subprocess.run([ruff, "format", "--quiet", target], cwd=PROJECT_DIR, check=False)
     result = subprocess.run(
-        [ruff, "check", "--fix", "--quiet", file_path],
+        [ruff, "check", "--fix", "--quiet", target],
         cwd=PROJECT_DIR,
         capture_output=True,
         text=True,
