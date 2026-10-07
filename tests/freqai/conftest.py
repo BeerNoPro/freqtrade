@@ -60,7 +60,7 @@ def freqai_conf(default_conf, tmp_path):
                 "data_split_parameters": {"test_size": 0.33, "shuffle": False},
                 "model_training_parameters": {"n_estimators": 100},
             },
-            "config_files": [Path("config_examples", "config_freqai.example.json")],
+            "config_files": [Path("tests", "testdata", "config_freqai.example.json")],
         }
     )
     freqaiconf["exchange"].update({"pair_whitelist": ["ADA/BTC", "DASH/BTC", "ETH/BTC", "LTC/BTC"]})

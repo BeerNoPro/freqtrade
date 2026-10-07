@@ -13,7 +13,6 @@ freqtrade/  (repo)
 ├── tests/              # Bộ test pytest, cấu trúc giống freqtrade/ (commands, exchange, freqtradebot,
 │                       #   optimize, persistence, plugins, rpc, strategy, ...) + testdata/
 ├── docs/               # Tài liệu tiếng Việt (overview, structure, lifecycle, signal-bot-workflow)
-├── config_examples/    # Config mẫu (binance, freqai, full, kraken)
 ├── ft_client/          # Client REST API Python (package freqtrade-client riêng)
 ├── scripts/            # Script tiện ích
 ├── build_helpers/      # Script build, schema.json

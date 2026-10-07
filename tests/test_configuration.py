@@ -41,7 +41,7 @@ from tests.conftest import (
 
 @pytest.fixture(scope="function")
 def all_conf():
-    config_file = Path(__file__).parents[1] / "config_examples/config_full.example.json"
+    config_file = Path(__file__).parent / "testdata/config_full.example.json"
     conf = load_config_file(str(config_file))
     return conf
 
