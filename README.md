@@ -45,11 +45,14 @@ Telegram: tạo bot bằng @BotFather, điền `token` và `chat_id` vào config
 ## Kiểm tra chất lượng code
 
 ```powershell
-.venv\Scripts\ruff.exe check freqtrade tests
-.venv\Scripts\ruff.exe format freqtrade tests
+.venv\Scripts\python.exe scripts\format_code.py           # trước khi commit: ruff fix + format + encoding
+.venv\Scripts\python.exe scripts\check_encoding.py --all  # kiểm tra encoding / xuống dòng toàn repo
 .venv\Scripts\mypy.exe freqtrade
 .venv\Scripts\python.exe -m pytest tests -q
+.venv\Scripts\pre-commit.exe install -t pre-commit -t pre-push   # cài git hook (một lần mỗi máy)
 ```
+
+Chuẩn file text: UTF-8 không BOM, xuống dòng LF; riêng `*.ps1` dùng UTF-8 có BOM + CRLF.
 
 ## An toàn
 

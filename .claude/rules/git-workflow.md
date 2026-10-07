@@ -29,7 +29,10 @@
   ```
 
 ## Trước khi commit (bắt buộc)
-1. `ruff check` + `ruff format --check` trên file `.py` đã sửa.
+1. `.venv/Scripts/python.exe scripts/format_code.py` — ruff fix + format và chuẩn hóa encoding/xuống dòng cho các file đã đổi.
+   Chuẩn: UTF-8 không BOM + LF; riêng `*.ps1` UTF-8 có BOM + CRLF (`.gitattributes`, `.editorconfig`).
+   Git hook (pre-commit) tự kiểm tra lại khi commit và kiểm tra toàn repo khi push.
+   Máy mới: `.venv/Scripts/pre-commit.exe install -t pre-commit -t pre-push`.
 2. Đã sửa `freqtrade/` (core) → chạy `pytest` cho thư mục test tương ứng.
 3. Đã sửa strategy → chạy skill `/validate-strategy` (ít nhất bản smoke).
 4. Quét secret trong `git diff --cached`: không được có API key, secret, token Telegram, mật khẩu, `jwt_secret_key`, `ws_token`.

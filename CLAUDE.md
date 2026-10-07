@@ -34,7 +34,10 @@ Engine là Freqtrade 2026.9 (GPLv3, giữ `LICENSE` + `NOTICE`). Logic riêng n�
 ```bash
 .venv/Scripts/freqtrade.exe download-data --config user_data/config_futures.json --timeframes 1h 4h --timerange 20221101-
 .venv/Scripts/freqtrade.exe backtesting --config user_data/config_futures.json --strategy <S> --fee 0.0006 --enable-protections --breakdown month
-.venv/Scripts/ruff.exe check <file> && .venv/Scripts/ruff.exe format <file>
+.venv/Scripts/python.exe scripts/format_code.py          # format + chuẩn hóa encoding file đã đổi (trước commit)
+.venv/Scripts/python.exe scripts/check_encoding.py --all  # kiểm tra encoding toàn repo (hook pre-push cũng chạy)
 .venv/Scripts/python.exe -m pytest tests/<thư mục> -q
 ```
 - Lint: ruff (line-length 100, max-complexity 12); type check: mypy; test: pytest.
+- File text: UTF-8 không BOM + LF; `*.ps1` UTF-8 có BOM + CRLF (Windows PowerShell 5.1 cần BOM cho tiếng Việt).
+- Git hook đã cài qua pre-commit (`.pre-commit-config.yaml`): ruff, mypy, encoding khi commit; encoding toàn repo khi push.

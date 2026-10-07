@@ -17,7 +17,8 @@ Luật đầy đủ: `.claude/rules/git-workflow.md`. Làm lần lượt, dừng
 - Không bao giờ thêm: `user_data/config*.json`, `*.sqlite*`, dữ liệu trong `user_data/data/`, `user_data/backtest_results/`, `user_data/reports/`, `.venv/`.
 
 ## 3. Kiểm tra chất lượng
-- File `.py` đã đổi: `.venv/Scripts/ruff.exe check <files>` và `.venv/Scripts/ruff.exe format --check <files>`.
+- Chạy `.venv/Scripts/python.exe scripts/format_code.py` (ruff fix + format + encoding/xuống dòng cho file đã đổi).
+  Còn lỗi lint phải sửa tay → sửa rồi chạy lại. Hook pre-commit sẽ chặn commit nếu file chưa đạt chuẩn.
 - Có đổi trong `freqtrade/`: chạy `.venv/Scripts/python.exe -m pytest tests/<thư mục tương ứng> -q -x`.
 - Có đổi strategy trong `user_data/strategies/`: nhắc người dùng chạy `/validate-strategy` nếu chưa chạy cho thay đổi này.
 

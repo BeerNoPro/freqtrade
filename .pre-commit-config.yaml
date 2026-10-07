@@ -1,6 +1,25 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
+# Install once:  .venv/Scripts/pre-commit.exe install -t pre-commit -t pre-push
+default_stages: [pre-commit]
 repos:
+
+  # Project policy: UTF-8 without BOM + LF (CRLF + BOM for *.ps1) - see scripts/check_encoding.py
+  - repo: local
+    hooks:
+      - id: check-encoding
+        name: check encoding and line endings
+        entry: python scripts/check_encoding.py
+        language: python
+        types: [text]
+        stages: [pre-commit]
+      - id: check-encoding-all
+        name: check encoding and line endings (whole repository)
+        entry: python scripts/check_encoding.py --all
+        language: python
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: "v2.3.1"
@@ -18,7 +37,7 @@ repos:
 
   - repo: https://github.com/charliermarsh/ruff-pre-commit
     # Ruff version.
-    rev: 'v0.16.9'
+    rev: 'v0.16.8'  # keep in sync with requirements-dev.txt
     hooks:
       - id: ruff
       - id: ruff-format
@@ -52,6 +71,8 @@ repos:
     rev: v2.4.3
     hooks:
     - id: codespell
+      # Vietnamese text (docs, agent rules, run.ps1) is not English - skip it
+      exclude: '(\.md$|^run\.ps1$|^\.claude/)'
       additional_dependencies:
         - tomli
 

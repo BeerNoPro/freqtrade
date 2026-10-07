@@ -25,10 +25,10 @@ def module_name(path: Path) -> str:
 def imported_names(path: Path, tree: ast.Module):
     """Yield (name, lineno, is_top_level) for every freqtrade import in the file."""
     top_ids = set()
-    for node in tree.body:
-        for sub in ast.walk(node):
+    for stmt in tree.body:
+        for sub in ast.walk(stmt):
             if isinstance(sub, ast.Import | ast.ImportFrom) and not isinstance(
-                node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
+                stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
             ):
                 top_ids.add(id(sub))
     current = module_name(path)
