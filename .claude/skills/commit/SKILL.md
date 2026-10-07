@@ -39,7 +39,7 @@ Có kết quả đáng ngờ → dừng, chỉ cho người dùng dòng đó.
 - Dùng gợi ý trong `$ARGUMENTS` (nếu có) làm định hướng nội dung.
 
 ## 6. Commit
-- `git add <các file cụ thể>` (không dùng `git add -A` khi còn file lạ), rồi `git commit -F -` với message ở bước 5.
+- Stage: `git add -u` cho file đã theo dõi (sửa/xóa), `git add <file mới>` cho file mới. Không truyền đường dẫn đã bị `git rm` vào `git add` (lỗi `pathspec` làm cả lệnh không chạy). Kiểm tra lại bằng `git status --short` trước khi commit, rồi `git commit -F -` với message ở bước 5.
 - In ra `git log -1 --stat`.
 
 ## 7. Không push
