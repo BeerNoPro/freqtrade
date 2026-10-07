@@ -1,8 +1,10 @@
 .git
 .gitignore
+.gitattributes
+.editorconfig
 Dockerfile
 .dockerignore
-.devcontainer/
+.claude/
 docs/
 dist/
 tests/
@@ -10,13 +12,10 @@ site/
 .coveragerc
 .eggs
 .github
-.pylintrc
-.travis.yml
-CONTRIBUTING.md
 MANIFEST.in
 README.md
-freqtrade.service
-freqtrade.service.watchdog
+CLAUDE.md
+next-prompt.md
 freqtrade.egg-info
 .venv/
 .env

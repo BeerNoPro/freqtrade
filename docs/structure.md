@@ -18,9 +18,9 @@ freqtrade/  (repo)
 │                       #   binance_update_lev_tiers.py (bảng đòn bẩy), rest/ws client mẫu
 ├── .gitattributes, .editorconfig, .pre-commit-config.yaml   # Chuẩn file text + git hook
 ├── Dockerfile, docker-compose.yml   # Đóng gói & chạy bằng Docker (triển khai VPS)
-├── requirements*.txt   # Dependency: chính, dev, hyperopt, plot
-├── pyproject.toml      # Build + cấu hình ruff / mypy / pytest
-├── setup.sh / setup.ps1 # Cài đặt môi trường
+├── requirements.txt    # Toàn bộ thư viện để chạy bot (gồm hyperopt, plot)
+├── requirements-dev.txt # Công cụ phát triển: pytest, ruff, mypy, pre-commit (gồm requirements.txt)
+├── pyproject.toml      # Build + cấu hình ruff / mypy / pytest / codespell
 ├── run.ps1             # Launcher Windows riêng của dự án (ui/trade/backtest/hyperopt/download)
 └── CLAUDE.md           # Hướng dẫn ngữ cảnh cho agent
 ```
