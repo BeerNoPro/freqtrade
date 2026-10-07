@@ -23,7 +23,7 @@ Luật đầy đủ: `.claude/rules/git-workflow.md`. Làm lần lượt, dừng
 
 ## 4. Quét secret trên phần sắp commit
 ```bash
-git diff --cached | grep -inE "api[_-]?key|secret|token|password|jwt_secret|ws_token|[0-9]{8,10}:[A-Za-z0-9_-]{30,}"
+git diff --cached | grep "^+" | grep -inE "api[_-]?key|secret|token|password|jwt_secret|ws_token|[0-9]{8,10}:[A-Za-z0-9_-]{30,}"
 ```
 Có kết quả đáng ngờ → dừng, chỉ cho người dùng dòng đó.
 
