@@ -21,7 +21,7 @@ database SQLite tự tạo. Mọi lệnh gọi qua `.venv\Scripts\freqtrade.exe`
 
 ```powershell
 # Cài / cập nhật thư viện
-uv pip install --python .venv\Scripts\python.exe -r requirements.txt -r requirements-hyperopt.txt -r requirements-plot.txt -e .
+uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt -e .   # requirements-dev.txt đã gồm requirements.txt
 
 # Kiểm tra cài đặt
 .venv\Scripts\freqtrade.exe --version

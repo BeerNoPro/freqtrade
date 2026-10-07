@@ -62,3 +62,12 @@ janus==2.0.0
 
 ast-comments==1.3.0
 packaging==26.3
+
+# Hyperopt (parameter optimisation)
+scikit-learn==1.9.1
+filelock==4.0.1
+optuna==5.0.0
+cmaes==0.13.1
+
+# Plotting (plot-dataframe / plot-profit) - remove together with the plot module
+plotly==7.1.0
