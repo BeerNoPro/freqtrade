@@ -800,19 +800,6 @@ AVAILABLE_CLI_OPTIONS = {
             "if --analysis-to-csv is enabled. Default: user_data/basktesting_results/"
         ),
     ),
-    "freqaimodel": Arg(
-        "--freqaimodel",
-        help="Specify a custom freqaimodels.",
-        metavar="NAME",
-    ),
-    "freqaimodel_path": Arg(
-        "--freqaimodel-path",
-        help="Specify additional lookup path for freqaimodels.",
-        metavar="PATH",
-    ),
-    "freqai_backtest_live_models": Arg(
-        "--freqai-backtest-live-models", help="Run backtest with ready models.", action="store_true"
-    ),
     "minimum_trade_amount": Arg(
         "--minimum-trade-amount",
         help="Minimum trade amount for lookahead-analysis",

@@ -551,10 +551,6 @@ class DownloadDataPayload(ExchangeModePayloadMixin, BaseModel):
         return values
 
 
-class FreqAIModelListResponse(BaseModel):
-    freqaimodels: list[str]
-
-
 class __StrategyParameter(BaseModel):
     param_type: str
     name: str

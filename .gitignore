@@ -117,6 +117,5 @@ target/
 #exceptions
 !*.gitkeep
 !tests/testdata/config_full.example.json
-!tests/testdata/config_freqai.example.json
 
 docker-compose-*.yml

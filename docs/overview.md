@@ -9,7 +9,7 @@
 - Hỗ trợ giao dịch **Spot** và **Futures** (đòn bẩy) qua thư viện [`ccxt`](https://github.com/ccxt/ccxt) trên hầu hết các sàn lớn (Binance, Bybit, OKX, Kraken, Gate.io...).
 - Điều khiển qua **Telegram**, **WebUI (FreqUI)** hoặc **REST API**.
 - Lưu trạng thái bằng **SQLite** (qua SQLAlchemy 2.x) — không cần cài database server riêng.
-- Bao gồm các công cụ: **backtesting** (kiểm thử trên dữ liệu lịch sử), **hyperopt** (tối ưu tham số), **FreqAI** (machine learning), và **plotting** (vẽ biểu đồ).
+- Bao gồm các công cụ: **backtesting** (kiểm thử trên dữ liệu lịch sử), **hyperopt** (tối ưu tham số) và **plotting** (vẽ biểu đồ).
 
 ## Triết lý sử dụng
 
@@ -56,7 +56,6 @@ Liệt kê đầy đủ các khối chức năng có sẵn trong source (chi ti�
 | **Sàn giao dịch** | `exchange/` | Wrapper ccxt + lớp riêng ~20 sàn (spot & futures) |
 | **Backtesting** | `optimize/backtesting.py` | Mô phỏng chiến lược trên dữ liệu lịch sử |
 | **Hyperopt** | `optimize/hyperopt*.py` | Tối ưu tham số (Optuna) + 14 hàm loss |
-| **FreqAI (ML)** | `freqai/` | LightGBM, XGBoost, PyTorch, Reinforcement Learning |
 | **Pairlist** | `plugins/pairlist/` | 7 generator + 12 filter chọn coin động/tĩnh |
 | **Protections** | `plugins/protections/` | 4 cơ chế bảo vệ vốn |
 | **Lưu trữ** | `persistence/` | Model `Trade`/`Order`, DB SQLite, pairlock |
@@ -72,7 +71,7 @@ Liệt kê đầy đủ các khối chức năng có sẵn trong source (chi ti�
 - Python >= 3.11, pip, git
 - **TA-Lib** (thư viện chỉ báo kỹ thuật, native)
 - Khuyến nghị: virtualenv (hoặc Docker)
-- Phần cứng tối thiểu: 2GB RAM, 1GB đĩa, 2 vCPU (dry-run/backtest nhẹ; hyperopt/FreqAI nặng hơn)
+- Phần cứng tối thiểu: 2GB RAM, 1GB đĩa, 2 vCPU (dry-run/backtest nhẹ; hyperopt nặng hơn)
 
 ## Tài liệu liên quan
 

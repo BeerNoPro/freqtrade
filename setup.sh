@@ -92,19 +92,9 @@ function updateenv() {
             fi
         fi
 
-        read -p "Do you want to install dependencies for freqai [y/N]? "
-        if [[ $REPLY =~ ^[Yy]$ ]]
-        then
-            REQUIREMENTS_FREQAI="-r requirements-freqai.txt"
-            read -p "Do you also want dependencies for freqai-rl or PyTorch (~700mb additional space required) [y/N]? "
-            if [[ $REPLY =~ ^[Yy]$ ]]
-            then
-                REQUIREMENTS_FREQAI="-r requirements-freqai-rl.txt"
-            fi
-        fi
     fi
 
-    ${PIP} install --upgrade -r ${REQUIREMENTS} ${REQUIREMENTS_HYPEROPT} ${REQUIREMENTS_PLOT} ${REQUIREMENTS_FREQAI} ${REQUIREMENTS_FREQAI_RL}
+    ${PIP} install --upgrade -r ${REQUIREMENTS} ${REQUIREMENTS_HYPEROPT} ${REQUIREMENTS_PLOT}
     if [ $? -ne 0 ]; then
         echo "Failed installing dependencies"
         exit 1

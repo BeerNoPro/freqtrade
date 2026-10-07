@@ -17,7 +17,7 @@ freqtrade/  (repo)
 ├── scripts/            # Script tiện ích
 ├── build_helpers/      # Script build, schema.json
 ├── docker/, Dockerfile, docker-compose.yml   # Chạy bằng Docker
-├── requirements*.txt   # Dependency: chính, dev, hyperopt, plot, freqai, freqai-rl
+├── requirements*.txt   # Dependency: chính, dev, hyperopt, plot
 ├── pyproject.toml      # Build + cấu hình ruff / mypy / pytest
 ├── setup.sh / setup.ps1 # Cài đặt môi trường
 ├── run.ps1             # Launcher Windows riêng của dự án (ui/trade/backtest/hyperopt/download)
@@ -88,7 +88,7 @@ FreqtradeException
 | optimize_commands.py | `start_backtesting`, `start_backtesting_show`, `start_hyperopt`, `start_lookahead_analysis`, `start_recursive_analysis`, `start_edge` | `backtesting`, `backtesting-show`, `hyperopt`, `lookahead-analysis`, `recursive-analysis`, `edge` (**đã bị gỡ từ 2025.6**, chỉ còn báo lỗi) |
 | hyperopt_commands.py | `start_hyperopt_list`, `start_hyperopt_show` | `hyperopt-list`, `hyperopt-show` |
 | data_commands.py | `start_download_data`, `start_convert_data`, `start_convert_trades`, `start_list_data`, `start_list_trades_data` | `download-data`, `convert-data`, `convert-trade-data`, `trades-to-ohlcv`, `list-data` |
-| list_commands.py | `start_list_exchanges`, `start_list_markets`, `start_list_strategies`, `start_list_freq`, `start_list_hyperopt_loss_functions`, `start_list_timeframes`, `start_show_trades` | `list-exchanges`, `list-markets`, `list-pairs`, `list-strategies`, `list-freqaimodels`, `list-hyperoptloss`, `list-timeframes`, `show-trades` |
+| list_commands.py | `start_list_exchanges`, `start_list_markets`, `start_list_strategies`, `start_list_hyperopt_loss_functions`, `start_list_timeframes`, `start_show_trades` | `list-exchanges`, `list-markets`, `list-pairs`, `list-strategies`, `list-hyperoptloss`, `list-timeframes`, `show-trades` |
 | deploy_commands.py (+ deploy_ui.py) | `start_create_userdir`, `start_new_strategy`, `start_install_ui` | `create-userdir`, `new-strategy`, `install-ui` |
 | build_config_commands.py | `start_new_config`, `start_show_config` | `new-config`, `show-config` |
 | analyze_commands.py | `start_analysis_entries_exits` | `backtesting-analysis` |
@@ -261,7 +261,7 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 | api_trading.py | Trade: `/status`, `/trades`, `/profit`, `/forceenter`, `/forceexit`, `/pair_candles`, `/start`, `/stop`, `/pause`... |
 | api_backtest.py, api_analysis.py, api_background_tasks.py | Chạy backtest, lookahead/recursive analysis qua API (chế độ webserver) |
 | api_pair_history.py, api_pairlists.py, api_download_data.py | Lịch sử cặp (phân tích lại toàn bộ dữ liệu), thử pairlist, tải data |
-| api_webserver.py | Chỉ ở chế độ `webserver`: liệt kê strategies, exchanges, hàm loss, model FreqAI |
+| api_webserver.py | Chỉ ở chế độ `webserver`: liệt kê strategies, exchanges, hàm loss |
 | api_ws.py, ws/ (channel, message_stream, proxy, serializer, ws_types), ws_schemas.py | WebSocket: phát sự kiện + dataframe (producer) |
 | api_schemas.py | Pydantic schema request/response |
 | deps.py | Dependency injection (`get_rpc`, `get_config`...) |
@@ -269,26 +269,11 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 
 ---
 
-## 11. `freqai/` — Machine Learning (tùy chọn)
-
-| Thư mục | File |
-|---|---|
-| Gốc | freqai_interface.py (`IFreqaiModel`), data_kitchen.py (chuẩn bị feature), data_drawer.py (lưu/nạp model), utils.py |
-| base_models/ | BaseRegressionModel, BaseClassifierModel, BasePyTorch{Model,Regressor,Classifier}, FreqaiMultiOutput{Regressor,Classifier} |
-| prediction_models/ | LightGBM{Regressor,Classifier}(+MultiTarget), XGBoost{Regressor,Classifier,RFRegressor,RFClassifier}(+MultiTarget), SKLearnRandomForestClassifier, PyTorchMLP{Regressor,Classifier}, PyTorchTransformerRegressor, ReinforcementLearner(+_multiproc) |
-| RL/ | BaseEnvironment, Base{3,4,5}ActionRLEnv, BaseReinforcementLearningModel |
-| torch/ | PyTorchModelTrainer, PyTorchMLPModel, PyTorchTransformerModel, datasets, data convertor |
-| tensorboard/ | Ghi log huấn luyện |
-
-Gắn vào strategy qua `feature_engineering_*()` + `set_freqai_targets()`; chạy trong `populate_indicators()` (`self.freqai.start(...)`).
-
----
-
-## 12. Module hạ tầng
+## 11. Module hạ tầng
 
 | Thư mục | Vai trò |
 |---|---|
-| [resolvers/](../freqtrade/resolvers/) | Nạp class theo tên: strategy (kèm ghi đè thuộc tính từ config), exchange, pairlist, protection, hyperopt loss, freqai model |
+| [resolvers/](../freqtrade/resolvers/) | Nạp class theo tên: strategy (kèm ghi đè thuộc tính từ config), exchange, pairlist, protection, hyperopt loss |
 | [enums/](../freqtrade/enums/) | `State`, `RunMode`, `ExitType`, `ExitCheckTuple`, `SignalType`/`SignalTagType`/`SignalDirection`, `TradingMode`, `MarginMode`, `CandleType`, `PriceType`, `RPCMessageType`, `OrderTypeValues`, `BacktestState`, `HyperoptState`, `MarketStateType` |
 | [leverage/](../freqtrade/leverage/) | Lãi vay margin (interest.py), giá thanh lý (liquidation_price.py) |
 | [plot/](../freqtrade/plot/) | Vẽ biểu đồ plotly (`plot-dataframe`, `plot-profit`) |
@@ -297,12 +282,12 @@ Gắn vào strategy qua `feature_engineering_*()` + `set_freqai_targets()`; ch�
 | [mixins/](../freqtrade/mixins/) | `LoggingMixin` (`log_once`) |
 | [system/](../freqtrade/system/) | Cấu hình asyncio, gc, multiprocessing, in version |
 | [ft_types/](../freqtrade/ft_types/) | TypedDict dùng chung: kết quả backtest, plot annotation, danh sách sàn |
-| [templates/](../freqtrade/templates/) | Mẫu cho `new-strategy`/`new-config`: sample_strategy, FreqaiExample*, sample_hyperopt_loss, subtemplates |
+| [templates/](../freqtrade/templates/) | Mẫu cho `new-strategy`/`new-config`: sample_strategy, sample_hyperopt_loss, subtemplates |
 | [vendor/qtpylib/](../freqtrade/vendor/qtpylib/) | Chỉ báo qtpylib nhúng kèm |
 
 ---
 
-## 13. Luồng → file (tra nhanh)
+## 12. Luồng → file (tra nhanh)
 
 | Luồng | Đi qua |
 |---|---|
@@ -335,7 +320,6 @@ user_data/
 ├── backtest_results/        # Kết quả backtest (.zip)
 ├── hyperopt_results/        # Kết quả hyperopt (.fthypt)
 ├── hyperopts/               # Hàm loss tùy chỉnh
-├── freqaimodels/            # Model FreqAI
 ├── notebooks/, plot/, logs/
 └── CLAUDE.md
 ```

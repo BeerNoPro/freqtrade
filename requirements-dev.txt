@@ -2,8 +2,6 @@
 -r requirements.txt
 -r requirements-plot.txt
 -r requirements-hyperopt.txt
--r requirements-freqai.txt
--r requirements-freqai-rl.txt
 
 ruff==0.16.8
 mypy==2.3.1

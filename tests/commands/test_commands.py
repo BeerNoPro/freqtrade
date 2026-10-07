@@ -22,7 +22,6 @@ from freqtrade.commands import (
     start_install_ui,
     start_list_data,
     start_list_exchanges,
-    start_list_freqAI_models,
     start_list_hyperopt_loss_functions,
     start_list_markets,
     start_list_strategies,
@@ -1241,30 +1240,6 @@ def test_start_list_hyperopt_loss_functions(capsys):
     assert "<builtin>/hyperopt_loss_sortino_daily.py" in captured.out
 
 
-def test_start_list_freqAI_models(capsys):
-    args = ["list-freqaimodels", "-1"]
-    pargs = get_args(args)
-    pargs["config"] = None
-    start_list_freqAI_models(pargs)
-    captured = capsys.readouterr()
-    assert "LightGBMClassifier" in captured.out
-    assert "LightGBMRegressor" in captured.out
-    assert "XGBoostRegressor" in captured.out
-    assert "<builtin>/LightGBMRegressor.py" not in captured.out
-
-    args = [
-        "list-freqaimodels",
-    ]
-    pargs = get_args(args)
-    pargs["config"] = None
-    start_list_freqAI_models(pargs)
-    captured = capsys.readouterr()
-    assert "LightGBMClassifier" in captured.out
-    assert "LightGBMRegressor" in captured.out
-    assert "XGBoostRegressor" in captured.out
-    assert "<builtin>/LightGBMRegressor.py" in captured.out
-
-
 def test_start_test_pairlist(mocker, caplog, tickers, default_conf, capsys):
     patch_exchange(mocker, mock_markets=True)
     mocker.patch.multiple(
@@ -2080,7 +2055,7 @@ def test_start_strategy_updater(mocker, tmp_path):
     pargs["config"] = None
     start_strategy_update(pargs)
     # Number of strategies in the test directory
-    assert sc_mock.call_count == 13
+    assert sc_mock.call_count == 8
 
     sc_mock.reset_mock()
     args = [

@@ -28,8 +28,6 @@ ARGS_STRATEGY = [
     "strategy",
     "strategy_path",
     "recursive_strategy_search",
-    "freqaimodel",
-    "freqaimodel_path",
 ]
 
 ARGS_TRADE = ["db_url", "sd_notify", "dry_run", "dry_run_wallet", "fee"]
@@ -59,7 +57,6 @@ ARGS_BACKTEST = [
     "exportdirectory",
     "backtest_breakdown",
     "backtest_cache",
-    "freqai_backtest_live_models",
     "backtest_notes",
 ]
 
@@ -91,8 +88,6 @@ ARGS_LIST_STRATEGIES = [
     "print_one_column",
     "recursive_strategy_search",
 ]
-
-ARGS_LIST_FREQAIMODELS = ["freqaimodel_path", "print_one_column"]
 
 ARGS_LIST_HYPEROPTS = ["hyperopt_path", "print_one_column"]
 
@@ -287,7 +282,6 @@ NO_CONF_REQURIED = [
     "hyperopt-list",
     "hyperopt-show",
     "list-data",
-    "list-freqaimodels",
     "list-hyperoptloss",
     "list-markets",
     "list-pairs",
@@ -398,7 +392,6 @@ class Arguments:
             start_install_ui,
             start_list_data,
             start_list_exchanges,
-            start_list_freqAI_models,
             start_list_hyperopt_loss_functions,
             start_list_markets,
             start_list_strategies,
@@ -611,15 +604,6 @@ class Arguments:
         )
         list_hyperopt_loss_cmd.set_defaults(func=start_list_hyperopt_loss_functions)
         self._build_args(optionlist=ARGS_LIST_HYPEROPTS, parser=list_hyperopt_loss_cmd)
-
-        # Add list-freqAI Models subcommand
-        list_freqaimodels_cmd = subparsers.add_parser(
-            "list-freqaimodels",
-            help="Print available freqAI models.",
-            parents=[_common_parser],
-        )
-        list_freqaimodels_cmd.set_defaults(func=start_list_freqAI_models)
-        self._build_args(optionlist=ARGS_LIST_FREQAIMODELS, parser=list_freqaimodels_cmd)
 
         # Add list-timeframes subcommand
         list_timeframes_cmd = subparsers.add_parser(
