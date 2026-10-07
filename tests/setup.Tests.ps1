@@ -1,4 +1,4 @@
-
+﻿
 Describe "Setup and Tests" {
   BeforeAll {
     # Setup variables
