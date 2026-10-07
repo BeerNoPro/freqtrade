@@ -62,10 +62,11 @@ def test_check_exchange(default_conf, caplog) -> None:
     caplog.clear()
 
     # Test an officially supported by Freqtrade team exchange - with remapping
-    default_conf.get("exchange").update({"name": "okx"})
+    default_conf.get("exchange").update({"name": "binanceusdm"})
     assert check_exchange(default_conf)
     assert log_has_re(
-        r"Exchange \"okx\" is officially supported by the Freqtrade development team\.", caplog
+        r"Exchange \"binanceusdm\" is officially supported by the Freqtrade development team\.",
+        caplog,
     )
     caplog.clear()
     # Test an available exchange, supported by ccxt

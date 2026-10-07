@@ -2803,22 +2803,20 @@ def test_api_exchanges(botclient):
     response = rc.json()
     assert isinstance(response["exchanges"], list)
     assert len(response["exchanges"]) > 20
-    okx = next(x for x in response["exchanges"] if x["classname"] == "okx")
-    assert okx == {
-        "classname": "okx",
-        "name": "OKX",
+    binance = next(x for x in response["exchanges"] if x["classname"] == "binance")
+    assert binance == {
+        "classname": "binance",
+        "name": "Binance",
         "valid": True,
         "supported": True,
-        "comment": "",
+        "comment": ANY,
         "comment_futures": ANY,
         "dex": False,
         "is_alias": False,
         "alias_for": None,
-        "trade_modes": [
-            {"trading_mode": "spot", "margin_mode": ""},
-            {"trading_mode": "futures", "margin_mode": "isolated"},
-        ],
+        "trade_modes": ANY,
     }
+    assert {"trading_mode": "futures", "margin_mode": "isolated"} in binance["trade_modes"]
 
     mexc = next(x for x in response["exchanges"] if x["classname"] == "mexc")
     assert mexc == {

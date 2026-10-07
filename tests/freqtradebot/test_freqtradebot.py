@@ -882,22 +882,10 @@ def test_process_informative_pairs_added(default_conf_usdt, ticker_usdt, mocker)
     [
         (False, "spot", "binance", None, 0.0, None),
         (True, "spot", "binance", None, 0.0, None),
-        (False, "spot", "gate", None, 0.0, None),
-        (True, "spot", "gate", None, 0.0, None),
-        (False, "spot", "okx", None, 0.0, None),
-        (True, "spot", "okx", None, 0.0, None),
         (True, "futures", "binance", "isolated", 0.0, 11.88151815181518),
         (False, "futures", "binance", "isolated", 0.0, 8.080471380471382),
-        (True, "futures", "gate", "isolated", 0.0, 11.87413417771621),
-        (False, "futures", "gate", "isolated", 0.0, 8.085708510208207),
         (True, "futures", "binance", "isolated", 0.05, 11.7874422442244),
         (False, "futures", "binance", "isolated", 0.05, 8.17644781144781),
-        (True, "futures", "gate", "isolated", 0.05, 11.7804274688304),
-        (False, "futures", "gate", "isolated", 0.05, 8.181423084697796),
-        (True, "futures", "okx", "isolated", 0.0, 11.87413417771621),
-        (False, "futures", "okx", "isolated", 0.0, 8.085708510208207),
-        (True, "futures", "bybit", "isolated", 0.0, 11.9),
-        (False, "futures", "bybit", "isolated", 0.0, 8.1),
     ],
 )
 def test_execute_entry(
@@ -941,7 +929,6 @@ def test_execute_entry(
     default_conf_usdt["exchange"]["name"] = exchange_name
     if margin_mode:
         default_conf_usdt["margin_mode"] = margin_mode
-    mocker.patch("freqtrade.exchange.gate.Gate.validate_ordertypes")
     patch_RPCManager(mocker)
     patch_exchange(mocker, exchange=exchange_name)
     freqtrade = FreqtradeBot(default_conf_usdt)
@@ -963,10 +950,6 @@ def test_execute_entry(
         name=exchange_name,
         get_maintenance_ratio_and_amt=MagicMock(return_value=(0.01, 0.01)),
         get_max_leverage=MagicMock(return_value=10),
-    )
-    mocker.patch.multiple(
-        "freqtrade.exchange.okx.Okx",
-        get_max_pair_stake_amount=MagicMock(return_value=500000),
     )
     pair = "ETH/USDT"
 

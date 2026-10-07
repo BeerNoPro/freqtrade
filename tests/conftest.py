@@ -1,4 +1,5 @@
 # pragma pylint: disable=missing-docstring
+import importlib.util
 import json
 import logging
 import platform
@@ -227,8 +228,6 @@ def patch_exchange(
     mocker.patch(f"{EXMS}.name", PropertyMock(return_value=exchange.title()))
     mocker.patch(f"{EXMS}.precisionMode", PropertyMock(return_value=2))
     mocker.patch(f"{EXMS}.precision_mode_price", PropertyMock(return_value=2))
-    # Temporary patch ...
-    mocker.patch("freqtrade.exchange.bybit.Bybit.cache_leverage_tiers")
 
     if mock_markets:
         mocker.patch(f"{EXMS}._load_async_markets", return_value={})
@@ -237,9 +236,14 @@ def patch_exchange(
         mocker.patch(f"{EXMS}.markets", PropertyMock(return_value=mock_markets))
 
     if mock_supported_modes:
-        mocker.patch(
+        # Exchanges without a dedicated subclass use the generic Exchange class.
+        exchange_cls = (
             f"freqtrade.exchange.{exchange}.{exchange.capitalize()}"
-            "._supported_trading_mode_margin_pairs",
+            if importlib.util.find_spec(f"freqtrade.exchange.{exchange}")
+            else EXMS
+        )
+        mocker.patch(
+            f"{exchange_cls}._supported_trading_mode_margin_pairs",
             PropertyMock(
                 return_value=[
                     (TradingMode.SPOT, MarginMode.NONE),

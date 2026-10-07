@@ -44,6 +44,7 @@ from freqtrade.commands.deploy_ui import (
 from freqtrade.configuration import setup_utils_configuration
 from freqtrade.enums import RunMode
 from freqtrade.exceptions import OperationalException
+from freqtrade.exchange import Exchange
 from freqtrade.persistence.models import init_db
 from freqtrade.persistence.pairlock_middleware import PairLocks
 from freqtrade.util import dt_utc
@@ -210,8 +211,8 @@ def test_list_exchanges(capsys):
     captured = capsys.readouterr()
     assert re.search(r"Exchanges available for Freqtrade.*", captured.out)
     assert re.search(r".*binance.*", captured.out)
-    assert re.search(r"\bkrakenfutures\b", captured.out)
-    assert not re.search(r"\bmyokx\b", captured.out)
+    assert re.search(r"\bbinanceusdm\b", captured.out)
+    assert not re.search(r"\bkrakenfutures\b", captured.out)
 
 
 def test_list_timeframes(mocker, capsys):
@@ -1071,6 +1072,11 @@ def test_download_data_trades(mocker):
         "freqtrade.data.history.history_utils.convert_trades_to_ohlcv", MagicMock(return_value=[])
     )
     patch_exchange(mocker)
+    # Simulate an exchange with trade history but no candle history.
+    mocker.patch.dict(
+        Exchange._ft_has_default,
+        {"ohlcv_has_history": False, "trades_has_history": True},
+    )
     mocker.patch(f"{EXMS}.get_markets", return_value={"ETH/BTC": {}, "XRP/BTC": {}})
     args = [
         "download-data",
@@ -1106,6 +1112,11 @@ def test_download_data_trades(mocker):
 
 def test_download_data_data_invalid(mocker):
     patch_exchange(mocker, exchange="kraken")
+    # Simulate an exchange without historic candle data (generic exchange class).
+    mocker.patch.dict(
+        Exchange._ft_has_default,
+        {"ohlcv_has_history": False, "trades_has_history": True},
+    )
     mocker.patch(f"{EXMS}.get_markets", return_value={"ETH/BTC": {}, "XRP/BTC": {}})
     args = [
         "download-data",

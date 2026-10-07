@@ -43,28 +43,12 @@ BAD_EXCHANGES = {
     "binancecoinm": "Unsupported futures exchange",
 }
 
-MAP_EXCHANGE_CHILDCLASS = {
-    "gateio": "gate",
-    "huboi": "htx",
-    "kucoineu": "kucoin",
-}
+MAP_EXCHANGE_CHILDCLASS: dict[str, str] = {}
 
 SUPPORTED_EXCHANGES = [
     "binance",
     "binanceus",
     "binanceusdm",
-    "bingx",
-    "bitget",
-    "bybit",
-    "bybiteu",
-    "gate",
-    "gateeu",
-    "htx",
-    "hyperliquid",
-    "kraken",
-    "krakenfutures",
-    "okx",
-    "myokx",
 ]
 
 # either the main, or replacement methods (array) is required

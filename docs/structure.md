@@ -156,9 +156,10 @@ Danh sách callback người dùng: [lifecycle.md mục Q](lifecycle.md#q-danh-s
 | common.py | Retry decorator (`retrier`), danh sách sàn, hằng số |
 | check_exchange.py | Kiểm tra sàn có được hỗ trợ |
 | binance_public_data.py | Tải data lịch sử nhanh từ data.binance.vision |
-| **Lớp riêng từng sàn** | binance, bingx, bitget, bitpanda, bitvavo, bybit, coinex, cryptocom, gate, hitbtc, htx, hyperliquid, idex, kraken, krakenfutures, kucoin, lbank, luno, modetrade, okx |
+| **binance.py** | Lớp riêng **duy nhất** còn lại: `Binance`, `Binanceus`, `Binanceusdm` (các sàn khác đã bị cắt — xem [trim-log.md](trim-log.md)) |
+| binance_leverage_tiers.json | Bảng leverage tier Binance futures (dùng khi không gọi được API) |
 
-Mỗi lớp sàn ghi đè `_ft_has` / `_ft_has_futures` (khả năng sàn: loại lệnh stop, giới hạn nến, WebSocket...)
+Sàn khác vẫn có thể khai báo trong config nhưng sẽ chạy bằng lớp `Exchange` chung (không được hỗ trợ chính thức). Lớp sàn ghi đè `_ft_has` / `_ft_has_futures` (khả năng sàn: loại lệnh stop, giới hạn nến, WebSocket...)
 và `_supported_trading_mode_margin_pairs`. Ví dụ Binance: futures hỗ trợ cross + isolated, giới hạn 499 nến/lần,
 không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 
@@ -173,7 +174,7 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 | history/datahandlers/ | `IDataHandler` + định dạng feather (mặc định), json, parquet, arrow |
 | converter/converter.py | OHLCV ↔ DataFrame, bỏ nến chưa đóng, `trim_dataframe` |
 | [candle_columns.py](../freqtrade/candle_columns.py) | Định nghĩa cột theo loại nến (OHLCV, funding_rate, **open_interest**) |
-| converter/trade_converter*.py, orderflow.py | Dữ liệu trades → OHLCV, phân tích order flow |
+| converter/trade_converter.py, orderflow.py | Dữ liệu trades → OHLCV, phân tích order flow |
 | btanalysis/bt_fileutils.py | Đọc kết quả backtest (`load_backtest_stats`, `load_backtest_data`) |
 | btanalysis/historic_precision.py, trade_parallelism.py | Precision lịch sử, số lệnh song song |
 | metrics.py | Drawdown, Sharpe, Sortino, Calmar, CAGR, expectancy, market change — dùng cho báo cáo và hàm loss |
