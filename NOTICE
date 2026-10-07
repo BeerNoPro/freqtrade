@@ -1,0 +1,8 @@
+This project is based on Freqtrade (https://github.com/freqtrade/freqtrade),
+version 2026.9, Copyright (C) the Freqtrade contributors.
+
+Freqtrade is free software licensed under the GNU General Public License v3.0.
+This derivative work is distributed under the same license; see the LICENSE file.
+
+Modifications (strategy, configuration, Vietnamese documentation, tooling) are
+maintained in this repository. The original git history was not carried over.
