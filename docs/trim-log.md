@@ -33,3 +33,4 @@ Kiểm chứng chuẩn sau mỗi lần cắt: import core, `freqtrade --version`
 
 ## Ghi chú môi trường
 - 2026-10-07: gỡ `aiodns`/`pycares` khỏi `.venv` — `pycares 5.0.1` không phân giải DNS được trên Windows làm ccxt báo `ExchangeNotAvailable`. Không gói nào bắt buộc `aiodns`; aiohttp tự dùng DNS hệ thống khi không có nó.
+- 2026-10-08: `requirements.txt` không cài được từ đầu (CI/Docker fail): `ccxt==4.5.84` ghim cứng `urllib3==2.7.0` trong khi repo ghim `urllib3==2.8.0` (bản vá). Nâng `ccxt==4.5.85` (ghim `urllib3==2.8.0`). Bản này ghim `multidict==6.7.1` có CVE-2026-104874 (MODERATE, rò bộ nhớ ở phép hợp/trừ items-view trên dữ liệu ngoài — bot không dùng) → người dùng chọn tạm bỏ qua trong `tests/test_pip_audit.py`; gỡ khi ccxt nâng pin `multidict` ≥ 6.9.1.

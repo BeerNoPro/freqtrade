@@ -27,6 +27,10 @@ def test_pip_audit_no_vulnerabilities():
 
     pygments: CVE-2026-4539 - https://github.com/pygments/pygments/issues/3065
         not considered a security vulnerability by pygments.
+    multidict: CVE-2026-104874 (GHSA-54p9-h82j-f925) - reference leak in items-view
+        union/subtraction on attacker-controlled input. ccxt 4.5.85 pins
+        multidict==6.7.1, the bot never runs these operations on external data.
+        Remove the ignore once ccxt ships a pin >= 6.9.1.
 
     """
     # Get the project root directory
@@ -39,6 +43,8 @@ def test_pip_audit_no_vulnerabilities():
         "--progress-spinner=off",
         "--ignore-vuln",
         "CVE-2026-4539",
+        "--ignore-vuln",
+        "CVE-2026-104874",
         "--skip-editable",
     ]
 
