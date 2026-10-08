@@ -3138,6 +3138,20 @@ def test_sysinfo(botclient):
     assert isinstance(result["cpu_load"][0], dict)
 
 
+def test_sysinfo_load_avg_unavailable(botclient, mocker, caplog):
+    # Windows hosts with disabled performance counters make psutil.getloadavg() raise.
+    _ftbot, client = botclient
+    mocker.patch(
+        "freqtrade.rpc.rpc.psutil.getloadavg",
+        side_effect=RuntimeError("PdhAddEnglishCounterW failed."),
+    )
+
+    rc = client_get(client, f"{BASE_URI}/sysinfo")
+    assert_response(rc)
+    assert rc.json()["cpu_load_avg"] == {"1m": 0.0, "5m": 0.0, "15m": 0.0}
+    assert log_has_re(r"Could not read system load average: .*PdhAddEnglishCounterW", caplog)
+
+
 def test_api_backtesting(botclient, mocker, fee, caplog, tmp_path):
     try:
         ftbot, client = botclient
