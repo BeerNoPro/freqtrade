@@ -1429,6 +1429,25 @@ def test_sanitize_config(default_conf_usdt):
     assert res["exchange"]["secret"] == default_conf_usdt["exchange"]["secret"]
 
 
+def test_sanitize_config_api_server_secrets(default_conf_usdt):
+    # The JWT signing key and the websocket token grant API access - never print or store them.
+    default_conf_usdt["api_server"] = {
+        "enabled": True,
+        "username": "freqtrader",
+        "password": "SuperSecurePassword",
+        "jwt_secret_key": "somethingRandomSomethingRandom123",
+        "ws_token": ["token-a", "token-b"],
+    }
+    res = sanitize_config(default_conf_usdt)
+    assert res["api_server"]["password"] == "REDACTED"
+    assert res["api_server"]["jwt_secret_key"] == "REDACTED"
+    assert res["api_server"]["ws_token"] == "REDACTED"
+    assert res["api_server"]["username"] == "freqtrader"
+    # Original config is left untouched (the running bot still needs the values)
+    assert default_conf_usdt["api_server"]["jwt_secret_key"] == "somethingRandomSomethingRandom123"
+    assert default_conf_usdt["api_server"]["ws_token"] == ["token-a", "token-b"]
+
+
 def test_remove_exchange_credentials(default_conf) -> None:
     conf = deepcopy(default_conf)
     remove_exchange_credentials(conf["exchange"], False)
