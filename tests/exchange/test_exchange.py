@@ -5803,21 +5803,14 @@ def test_set_margin_mode(mocker, default_conf, margin_mode, caplog):
     "exchange_name, trading_mode, margin_mode, allow_none_margin_mode, exception_thrown",
     [
         ("binance", TradingMode.SPOT, None, False, False),
+        # Margin trading is not available for Binance in this build
         ("binance", TradingMode.MARGIN, MarginMode.ISOLATED, False, True),
-        ("binance", TradingMode.FUTURES, MarginMode.ISOLATED, False, False),
-        # * Remove once implemented
         ("binance", TradingMode.MARGIN, MarginMode.CROSS, False, True),
+        ("binance", TradingMode.FUTURES, MarginMode.ISOLATED, False, False),
         ("binance", TradingMode.FUTURES, MarginMode.CROSS, False, False),
         ("binance", TradingMode.FUTURES, None, False, True),
         # Validate without margin mode
         ("binance", TradingMode.FUTURES, None, True, False),
-        # * Uncomment once implemented
-        # ("binance", TradingMode.MARGIN, MarginMode.CROSS, False, False),
-        # ("binance", TradingMode.FUTURES, MarginMode.CROSS, False, False),
-        # ("kraken", TradingMode.MARGIN, MarginMode.CROSS, False, False),
-        # ("kraken", TradingMode.FUTURES, MarginMode.CROSS, False, False),
-        # ("gate", TradingMode.MARGIN, MarginMode.CROSS, False, False),
-        # ("gate", TradingMode.FUTURES, MarginMode.CROSS, False, False),
     ],
 )
 def test_validate_trading_mode_and_margin_mode(

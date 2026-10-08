@@ -4,8 +4,6 @@ from freqtrade.exceptions import OperationalException
 from freqtrade.util import FtPrecise
 
 
-one = FtPrecise(1.0)
-four = FtPrecise(4.0)
 twenty_four = FtPrecise(24.0)
 
 
@@ -29,8 +27,5 @@ def interest(
     exchange_name = exchange_name.lower()
     if exchange_name == "binance":
         return borrowed * rate * FtPrecise(ceil(hours)) / twenty_four
-    elif exchange_name == "kraken":
-        # Rounded based on https://kraken-fees-calculator.github.io/
-        return borrowed * rate * (one + FtPrecise(ceil(hours / four)))
     else:
         raise OperationalException(f"Leverage not available on {exchange_name} with freqtrade")
