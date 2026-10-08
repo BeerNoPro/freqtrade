@@ -49,7 +49,7 @@ main.py: main()                                  → Arguments → args["func"]
              3. validate_config_consistency()      kiểm tra config sau khi strategy đã ghi đè
              4. init_db(db_url)                    SQLite/SQLAlchemy
              5. Wallets                            số dư
-             6. RPCManager                         Telegram/Discord/Webhook/API server (thread riêng)
+             6. RPCManager                         Telegram/Webhook/API server (thread riêng)
              7. DataProvider, PairListManager      gắn dp + wallets vào strategy
              8. ExternalMessageConsumer            nếu bật producer/consumer
              9. _refresh_active_whitelist()        chạy pairlist lần đầu
@@ -399,7 +399,7 @@ Khi `position_adjustment_enable = True`, mỗi vòng `process_open_trade_positio
 
 [rpc.py](../freqtrade/rpc/rpc.py) chứa logic chung; Telegram và REST API chỉ là "vỏ" gọi vào đây.
 
-**Bot → bên ngoài** (thông báo): `RPCManager.send_msg()` phát tới Telegram, Discord, Webhook, WebSocket của API
+**Bot → bên ngoài** (thông báo): `RPCManager.send_msg()` phát tới Telegram, Webhook, WebSocket của API
 (các loại: `entry`, `entry_fill`, `exit`, `exit_fill`, `protection_trigger`, `analyzed_df`, `whitelist`...).
 
 **Bên ngoài → bot** (REST, xác thực Basic hoặc JWT; xem [api_auth.py](../freqtrade/rpc/api_server/api_auth.py)):

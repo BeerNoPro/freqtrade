@@ -246,10 +246,10 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 | File | Vai trò |
 |---|---|
 | [rpc.py](../freqtrade/rpc/rpc.py) (1839 dòng) | **Logic chung** cho mọi kênh: status, profit, `_rpc_force_entry`, `_rpc_force_exit`, `_rpc_analysed_dataframe`, start/stop/pause... |
-| rpc_manager.py | Đăng ký kênh (Telegram, Discord, Webhook, API) và phát `send_msg()` |
+| rpc_manager.py | Đăng ký kênh (Telegram, Webhook, API) và phát `send_msg()` |
 | rpc_types.py | Kiểu message gửi đi |
 | telegram.py (2336 dòng) | Bot Telegram (thread `FTTelegram`) |
-| webhook.py / discord.py | Gửi sự kiện ra URL ngoài (có retry/timeout) |
+| webhook.py | Gửi sự kiện ra URL ngoài (có retry/timeout) |
 | external_message_consumer.py | Consumer: nhận whitelist + dataframe từ bot producer qua WebSocket |
 | fiat_convert.py | Quy đổi tiền pháp định (CoinGecko) |
 
@@ -301,7 +301,7 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 | Thoát lệnh | `freqtradebot.py:exit_positions/handle_trade` → `interface.py:should_exit` → `freqtradebot.py:execute_trade_exit` |
 | Protections | `freqtradebot.py:handle_protections` → `plugins/protectionmanager.py` → `persistence/pairlock_middleware.py` |
 | Lệnh từ API | `rpc/api_server/api_trading.py` → `rpc/rpc.py` → `freqtradebot.py` |
-| Thông báo | `rpc/rpc_manager.py:send_msg` → telegram / webhook / discord / api ws |
+| Thông báo | `rpc/rpc_manager.py:send_msg` → telegram / webhook / api ws |
 | Backtest | `commands/optimize_commands.py` → `optimize/backtesting.py` → `optimize/optimize_reports/` |
 | Hyperopt | `optimize/hyperopt/hyperopt.py` → `hyperopt_optimizer.py` → `backtesting.py` → `hyperopt_loss/` |
 | Tải dữ liệu | `commands/data_commands.py` → `data/history/history_utils.py` → `exchange.py` / `binance_public_data.py` → `datahandlers/` |
