@@ -171,10 +171,10 @@ với mỗi cặp (tuần tự):
 
 ```
 [Generator]               →  [Filter]  →  [Filter]  → ... → whitelist
-StaticPairList,              AgeFilter, PriceFilter, SpreadFilter,
-VolumePairList,              VolatilityFilter, PerformanceFilter,
-MarketCapPairList,           RangeStabilityFilter, ShuffleFilter, ...
-RemotePairList (URL), ...
+StaticPairList,              AgeFilter, DelistFilter, PriceFilter,
+VolumePairList,              SpreadFilter, VolatilityFilter,
+PercentChangePairList,       PerformanceFilter, RangeStabilityFilter,
+RemotePairList (URL)         ShuffleFilter, ...
 ```
 - Blacklist (`pair_blacklist`, hỗ trợ regex) bị loại khỏi kết quả.
 - Sau khi tạo whitelist, bot **luôn thêm các cặp đang có lệnh mở** để vẫn tải nến và quản lý thoát cho chúng.

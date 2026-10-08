@@ -212,7 +212,7 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 ### `pairlist/`
 | Loại | Plugin |
 |---|---|
-| Generator (`is_pairlist_generator`) | `StaticPairList`, `VolumePairList`, `PercentChangePairList`, `MarketCapPairList`, `RemotePairList`, `CrossMarketPairList` |
+| Generator (`is_pairlist_generator`) | `StaticPairList`, `VolumePairList`, `PercentChangePairList`, `RemotePairList` |
 | Filter | `AgeFilter`, `DelistFilter`, `FullTradesFilter`, `OffsetFilter`, `PairInformationFilter`, `PerformanceFilter`, `PrecisionFilter`, `PriceFilter`, `RangeStabilityFilter`, `ShuffleFilter`, `SpreadFilter`, `VolatilityFilter` |
 | Cơ sở | `IPairList`, pairlist_helpers.py |
 
