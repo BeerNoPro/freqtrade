@@ -66,19 +66,14 @@ dependencies = [
   "uvicorn",
   "psutil",
   "schedule",
-  "janus",
-  "aiofiles",
   "aiohttp",
   "cryptography",
   "sdnotify",
   "python-dateutil",
-  "pytz",
-  "packaging",
   # hyperopt
   "cmaes",
   "filelock",
   "optuna > 4.0.0",
-  "scikit-learn",
 ]
 
 [project.optional-dependencies]
