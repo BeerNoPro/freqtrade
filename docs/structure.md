@@ -85,7 +85,7 @@ FreqtradeException
 | File | Hàm `start_*` | Subcommand |
 |---|---|---|
 | trade_commands.py | `start_trading` | `trade` |
-| optimize_commands.py | `start_backtesting`, `start_backtesting_show`, `start_hyperopt`, `start_lookahead_analysis`, `start_recursive_analysis`, `start_edge` | `backtesting`, `backtesting-show`, `hyperopt`, `lookahead-analysis`, `recursive-analysis`, `edge` (**đã bị gỡ từ 2025.6**, chỉ còn báo lỗi) |
+| optimize_commands.py | `start_backtesting`, `start_backtesting_show`, `start_hyperopt`, `start_lookahead_analysis`, `start_recursive_analysis` | `backtesting`, `backtesting-show`, `hyperopt`, `lookahead-analysis`, `recursive-analysis` |
 | hyperopt_commands.py | `start_hyperopt_list`, `start_hyperopt_show` | `hyperopt-list`, `hyperopt-show` |
 | data_commands.py | `start_download_data`, `start_convert_data`, `start_convert_trades`, `start_list_data`, `start_list_trades_data` | `download-data`, `convert-data`, `convert-trade-data`, `trades-to-ohlcv`, `list-data` |
 | list_commands.py | `start_list_exchanges`, `start_list_markets`, `start_list_strategies`, `start_list_hyperopt_loss_functions`, `start_list_timeframes`, `start_show_trades` | `list-exchanges`, `list-markets`, `list-pairs`, `list-strategies`, `list-hyperoptloss`, `list-timeframes`, `show-trades` |

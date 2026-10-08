@@ -154,9 +154,8 @@ def _validate_trailing_stoploss(conf: dict[str, Any]) -> None:
 
 def _validate_edge(conf: dict[str, Any]) -> None:
     """
-    Edge and Dynamic whitelist should not both be enabled, since edge overrides dynamic whitelists.
+    Edge is not part of this build - refuse configurations that still enable it.
     """
-
     if conf.get("edge", {}).get("enabled"):
         raise ConfigurationError(
             "Edge is no longer supported and has been removed from Freqtrade with 2025.6."
