@@ -67,7 +67,6 @@ dependencies = [
   "psutil",
   "schedule",
   "janus",
-  "ast-comments",
   "aiofiles",
   "aiohttp",
   "cryptography",

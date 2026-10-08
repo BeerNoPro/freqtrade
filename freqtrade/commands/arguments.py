@@ -257,8 +257,6 @@ ARGS_ANALYZE_ENTRIES_EXITS = [
 ]
 
 
-ARGS_STRATEGY_UPDATER = ["strategy_list", "strategy_path", "recursive_strategy_search"]
-
 ARGS_LOOKAHEAD_ANALYSIS = [
     a
     for a in ARGS_BACKTEST
@@ -291,7 +289,6 @@ NO_CONF_REQURIED = [
     "plot-profit",
     "show-trades",
     "install-ui",
-    "strategy-updater",
     "trades-to-ohlcv",
 ]
 
@@ -404,7 +401,6 @@ class Arguments:
             start_recursive_analysis,
             start_show_config,
             start_show_trades,
-            start_strategy_update,
             start_test_pairlist,
             start_trading,
             start_webserver,
@@ -671,15 +667,6 @@ class Arguments:
         )
         webserver_cmd.set_defaults(func=start_webserver)
         self._build_args(optionlist=ARGS_WEBSERVER, parser=webserver_cmd)
-
-        # Add strategy_updater subcommand
-        strategy_updater_cmd = subparsers.add_parser(
-            "strategy-updater",
-            help="updates outdated strategy files to the current version",
-            parents=[_common_parser],
-        )
-        strategy_updater_cmd.set_defaults(func=start_strategy_update)
-        self._build_args(optionlist=ARGS_STRATEGY_UPDATER, parser=strategy_updater_cmd)
 
         # Add lookahead_analysis subcommand
         lookahead_analayis_cmd = subparsers.add_parser(

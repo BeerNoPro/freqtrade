@@ -97,7 +97,6 @@ FreqtradeException
 | plot_commands.py | `start_plot_dataframe`, `start_plot_profit` | `plot-dataframe`, `plot-profit` |
 | db_commands.py | `start_convert_db` | `convert-db` |
 | webserver_commands.py | `start_webserver` | `webserver` |
-| strategy_utils_commands.py | `start_strategy_update` | `strategy-updater` |
 
 ---
 
@@ -128,7 +127,6 @@ FreqtradeException
 | strategy_helper.py | `merge_informative_pair`, `stoploss_from_open`, `stoploss_from_absolute` |
 | strategy_validation.py | `StrategyResultValidator`: chặn strategy làm sai lệch dataframe |
 | strategy_wrapper.py | `strategy_safe_wrapper`: lỗi trong callback → log + giá trị mặc định |
-| strategyupdater.py | Chuyển strategy cũ sang API mới (`strategy-updater`) |
 
 ### Hàm nội bộ quan trọng trong `IStrategy`
 

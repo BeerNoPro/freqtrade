@@ -29,7 +29,6 @@ from freqtrade.commands import (
     start_new_strategy,
     start_show_config,
     start_show_trades,
-    start_strategy_update,
     start_test_pairlist,
     start_trading,
     start_webserver,
@@ -2039,40 +2038,6 @@ def test_start_convert_db(fee, tmp_path):
     start_convert_db(pargs)
 
     assert db_target_file.is_file()
-
-
-def test_start_strategy_updater(mocker, tmp_path):
-    sc_mock = mocker.patch("freqtrade.commands.strategy_utils_commands.start_conversion")
-    teststrats = Path(__file__).parent.parent / "strategy/strats"
-    args = [
-        "strategy-updater",
-        "--userdir",
-        str(tmp_path),
-        "--strategy-path",
-        str(teststrats),
-    ]
-    pargs = get_args(args)
-    pargs["config"] = None
-    start_strategy_update(pargs)
-    # Number of strategies in the test directory
-    assert sc_mock.call_count == 8
-
-    sc_mock.reset_mock()
-    args = [
-        "strategy-updater",
-        "--userdir",
-        str(tmp_path),
-        "--strategy-path",
-        str(teststrats),
-        "--strategy-list",
-        "StrategyTestV3",
-        "StrategyTestV2",
-    ]
-    pargs = get_args(args)
-    pargs["config"] = None
-    start_strategy_update(pargs)
-    # Number of strategies in the test directory
-    assert sc_mock.call_count == 2
 
 
 def test_start_show_config(capsys, caplog):
