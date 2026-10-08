@@ -834,51 +834,6 @@ CONF_SCHEMA = {
             "type": "array",
             "items": {"type": "string"},
         },
-        "orderflow": {
-            "description": "Settings related to order flow.",
-            "type": "object",
-            "properties": {
-                "cache_size": {
-                    "description": "Size of the cache for order flow data.",
-                    "type": "number",
-                    "minimum": 1,
-                    "default": 1500,
-                },
-                "max_candles": {
-                    "description": "Maximum number of candles to consider.",
-                    "type": "number",
-                    "minimum": 1,
-                    "default": 1500,
-                },
-                "scale": {
-                    "description": "Scale factor for order flow data.",
-                    "type": "number",
-                    "minimum": 0.0,
-                },
-                "stacked_imbalance_range": {
-                    "description": "Range for stacked imbalance.",
-                    "type": "number",
-                    "minimum": 0,
-                },
-                "imbalance_volume": {
-                    "description": "Volume threshold for imbalance.",
-                    "type": "number",
-                    "minimum": 0,
-                },
-                "imbalance_ratio": {
-                    "description": "Ratio threshold for imbalance.",
-                    "type": "number",
-                    "minimum": 0.0,
-                },
-            },
-            "required": [
-                "max_candles",
-                "scale",
-                "stacked_imbalance_range",
-                "imbalance_volume",
-                "imbalance_ratio",
-            ],
-        },
     },
     "definitions": {
         "exchange": {

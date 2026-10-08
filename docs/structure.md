@@ -172,7 +172,7 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 | history/datahandlers/ | `IDataHandler` + định dạng feather (mặc định), json, parquet, arrow |
 | converter/converter.py | OHLCV ↔ DataFrame, bỏ nến chưa đóng, `trim_dataframe` |
 | [candle_columns.py](../freqtrade/candle_columns.py) | Định nghĩa cột theo loại nến (OHLCV, funding_rate, **open_interest**) |
-| converter/trade_converter.py, orderflow.py | Dữ liệu trades → OHLCV, phân tích order flow |
+| converter/trade_converter.py | Dữ liệu trades lịch sử → OHLCV (`download-data --dl-trades`, `trades-to-ohlcv`) |
 | btanalysis/bt_fileutils.py | Đọc kết quả backtest (`load_backtest_stats`, `load_backtest_data`) |
 | btanalysis/historic_precision.py, trade_parallelism.py | Precision lịch sử, số lệnh song song |
 | metrics.py | Drawdown, Sharpe, Sortino, Calmar, CAGR, expectancy, market change — dùng cho báo cáo và hàm loss |

@@ -11,9 +11,7 @@ from math import isinf, isnan
 from pandas import DataFrame
 from pydantic import ValidationError
 
-from freqtrade.configuration import TimeRange
 from freqtrade.constants import CUSTOM_TAG_MAX_LENGTH, Config, IntOrInf, ListPairsWithTimeframes
-from freqtrade.data.converter import populate_dataframe_with_trades
 from freqtrade.data.converter.converter import reduce_dataframe_footprint
 from freqtrade.data.dataprovider import DataProvider
 from freqtrade.enums import (
@@ -42,7 +40,7 @@ from freqtrade.strategy.informative_decorator import (
 )
 from freqtrade.strategy.strategy_validation import StrategyResultValidator
 from freqtrade.strategy.strategy_wrapper import strategy_safe_wrapper
-from freqtrade.util import dt_now, dt_ts
+from freqtrade.util import dt_now
 from freqtrade.wallets import Wallets
 
 
@@ -146,9 +144,6 @@ class IStrategy(ABC, HyperStrategyMixin):
 
     # A self set parameter that represents the market direction. filled from configuration
     market_direction: MarketDirection = MarketDirection.NONE
-
-    # Global cache dictionary
-    _cached_grouped_trades_per_pair: dict[str, DataFrame] = {}
 
     def __init__(self, config: Config) -> None:
         self.config = config
@@ -1607,33 +1602,6 @@ class IStrategy(ABC, HyperStrategyMixin):
         dataframe = self.advise_exit(dataframe, metadata)
         return dataframe
 
-    def _if_enabled_populate_trades(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
-        use_public_trades = self.config.get("exchange", {}).get("use_public_trades", False)
-        if use_public_trades:
-            pair = metadata["pair"]
-            # Build timerange from dataframe date column
-            if not dataframe.empty:
-                start_ts = dt_ts(dataframe["date"].iloc[0])
-                end_ts = dt_ts(dataframe["date"].iloc[-1])
-                timerange = TimeRange("date", "date", startts=start_ts, stopts=end_ts)
-            else:
-                timerange = None
-
-            trades = self.dp.trades(pair=pair, copy=False, timerange=timerange)
-
-            cached_grouped_trades: DataFrame | None = self._cached_grouped_trades_per_pair.get(pair)
-            dataframe, cached_grouped_trades = populate_dataframe_with_trades(
-                cached_grouped_trades, self.config, dataframe, trades
-            )
-
-            # dereference old cache
-            if pair in self._cached_grouped_trades_per_pair:
-                del self._cached_grouped_trades_per_pair[pair]
-            self._cached_grouped_trades_per_pair[pair] = cached_grouped_trades
-
-            logger.debug("Populated dataframe with trades.")
-        return dataframe
-
     def advise_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         """
         Populate indicators that will be used in the Buy, Sell, short, exit_short strategy
@@ -1650,7 +1618,6 @@ class IStrategy(ABC, HyperStrategyMixin):
                 self, dataframe, metadata, inf_data, populate_fn
             )
 
-        dataframe = self._if_enabled_populate_trades(dataframe, metadata)
         dataframe = self.populate_indicators(dataframe, metadata)
         if self.config.get("reduce_df_footprint", False) and self.config.get("runmode") not in [
             RunMode.DRY_RUN,

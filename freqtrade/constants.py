@@ -85,20 +85,6 @@ MATH_CLOSE_PREC = 1e-14  # Precision used for float comparisons
 # Don't modify sequence of DEFAULT_TRADES_COLUMNS
 # it has wide consequences for stored trades files
 DEFAULT_TRADES_COLUMNS = ["timestamp", "id", "type", "side", "price", "amount", "cost"]
-DEFAULT_ORDERFLOW_COLUMNS = ["level", "bid", "ask", "delta"]
-ORDERFLOW_ADDED_COLUMNS = [
-    "trades",
-    "orderflow",
-    "imbalances",
-    "stacked_imbalances_bid",
-    "stacked_imbalances_ask",
-    "max_delta",
-    "min_delta",
-    "bid",
-    "ask",
-    "delta",
-    "total_trades",
-]
 TRADES_DTYPES = {
     "timestamp": "int64",
     "id": "str",

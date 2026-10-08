@@ -87,7 +87,6 @@ def validate_config_consistency(conf: dict[str, Any], *, preliminary: bool = Fal
     _validate_ask_orderbook(conf)
     _validate_freqai_removed(conf)
     validate_migrated_strategy_settings(conf)
-    _validate_orderflow(conf)
     _validate_demo_trading(conf)
 
     # validate configuration before returning
@@ -325,13 +324,6 @@ def _validate_freqai_removed(conf: dict[str, Any]) -> None:
         raise ConfigurationError(
             "FreqAI has been removed from this build. "
             "Remove the 'freqai' section from your configuration."
-        )
-
-
-def _validate_orderflow(conf: dict[str, Any]) -> None:
-    if conf.get("exchange", {}).get("use_public_trades") and "orderflow" not in conf:
-        raise ConfigurationError(
-            "Orderflow is a required configuration key when using public trades."
         )
 
 

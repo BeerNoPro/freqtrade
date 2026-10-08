@@ -946,29 +946,6 @@ def test_validate_freqai_removed(default_conf, preliminary) -> None:
     assert issubclass(ConfigurationError, OperationalException)
 
 
-def test__validate_orderflow(default_conf) -> None:
-    conf = deepcopy(default_conf)
-    conf["exchange"]["use_public_trades"] = True
-    with pytest.raises(
-        ConfigurationError,
-        match=r"Orderflow is a required configuration key when using public trades\.",
-    ):
-        validate_config_consistency(conf)
-
-    conf.update(
-        {
-            "orderflow": {
-                "scale": 0.5,
-                "stacked_imbalance_range": 3,
-                "imbalance_volume": 100,
-                "imbalance_ratio": 3,
-            }
-        }
-    )
-    # Should pass.
-    validate_config_consistency(conf)
-
-
 def test__validate_demo_trading(default_conf_usdt) -> None:
     conf = deepcopy(default_conf_usdt)
     validate_config_consistency(conf)
