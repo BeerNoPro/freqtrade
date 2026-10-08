@@ -41,6 +41,7 @@ from freqtrade.rpc.api_server.api_auth import create_token, get_user_from_token
 from freqtrade.rpc.api_server.api_schemas import StrategyName
 from freqtrade.rpc.api_server.uvicorn_threaded import UvicornServer
 from freqtrade.rpc.api_server.webserver_bgwork import ApiBG
+from freqtrade.strategy import IStrategy
 from freqtrade.util.datetime_helpers import format_date
 from tests.conftest import (
     CURRENT_TEST_STRATEGY,
@@ -2366,7 +2367,7 @@ def test_api_pair_history(botclient, tmp_path, mocker):
     _ftbot.config["user_data_dir"] = tmp_path
 
     timeframe = "5m"
-    lfm = mocker.patch("freqtrade.strategy.interface.IStrategy.load_freqAI_model")
+    bot_start_spy = mocker.spy(IStrategy, "ft_bot_start")
     # Wrong mode
     rc = client_get(
         client,
@@ -2456,7 +2457,7 @@ def test_api_pair_history(botclient, tmp_path, mocker):
         assert data[0][date_col_idx] == "2018-01-11T00:00:00Z"
         assert data[0][rsi_col_idx] is not None
         assert data[0][rsi_col_idx] > 0
-        assert lfm.call_count == 1
+        assert bot_start_spy.call_count == 1
         assert result["pair"] == "UNITTEST/BTC"
         assert result["strategy"] == CURRENT_TEST_STRATEGY
         assert result["data_start"] == "2018-01-11 00:00:00+00:00"
@@ -2464,7 +2465,7 @@ def test_api_pair_history(botclient, tmp_path, mocker):
         assert result["data_stop"] == "2018-01-12 00:00:00+00:00"
         assert result["data_stop_ts"] == 1515715200000
         assert result["annotations"] == []
-        lfm.reset_mock()
+        bot_start_spy.reset_mock()
 
         # No data found
         if call == "get":
@@ -2515,7 +2516,7 @@ def test_api_pair_history(botclient, tmp_path, mocker):
             f"After trimming by startup_candle_count, no data for UNITTEST/BTC, 5m "
             f"in {trim_timerange} left."
         )
-        lfm.reset_mock()
+        bot_start_spy.reset_mock()
 
     # No strategy
     rc = client_post(
@@ -2570,7 +2571,6 @@ def test_api_pair_history_live_mode(botclient, tmp_path, mocker):
     _ftbot.config["user_data_dir"] = tmp_path
     _ftbot.config["runmode"] = RunMode.WEBSERVER
 
-    mocker.patch("freqtrade.strategy.interface.IStrategy.load_freqAI_model")
     # no strategy, live data
     gho = mocker.patch(
         "freqtrade.exchange.binance.Binance.get_historic_ohlcv",

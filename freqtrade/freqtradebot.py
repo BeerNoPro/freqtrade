@@ -243,10 +243,6 @@ class FreqtradeBot(LoggingMixin):
         except Exception as e:
             logger.warning(f"Exception during cleanup: {e.__class__.__name__} {e}")
 
-        finally:
-            if getattr(self, "strategy", None):
-                self.strategy.ft_bot_cleanup()
-
         if getattr(self, "rpc", None):
             self.rpc.cleanup()
         if hasattr(self, "emc") and self.emc:

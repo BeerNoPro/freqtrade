@@ -86,9 +86,7 @@ def validate_config_consistency(conf: dict[str, Any], *, preliminary: bool = Fal
     _validate_whitelist(conf)
     _validate_unlimited_amount(conf)
     _validate_ask_orderbook(conf)
-    _validate_freqai_hyperopt(conf)
-    _validate_freqai_backtest(conf)
-    _validate_freqai_include_timeframes(conf, preliminary=preliminary)
+    _validate_freqai_removed(conf)
     _validate_consumers(conf)
     validate_migrated_strategy_settings(conf)
     _validate_orderflow(conf)
@@ -322,67 +320,15 @@ def _validate_pricing_rules(conf: dict[str, Any]) -> None:
             del conf["ask_strategy"]
 
 
-def _validate_freqai_hyperopt(conf: dict[str, Any]) -> None:
-    freqai_enabled = conf.get("freqai", {}).get("enabled", False)
-    analyze_per_epoch = conf.get("analyze_per_epoch", False)
-    if analyze_per_epoch and freqai_enabled:
+def _validate_freqai_removed(conf: dict[str, Any]) -> None:
+    """
+    FreqAI is not part of this build - refuse configurations that still enable it.
+    """
+    if conf.get("freqai", {}).get("enabled", False):
         raise ConfigurationError(
-            "Using analyze-per-epoch parameter is not supported with a FreqAI strategy."
+            "FreqAI has been removed from this build. "
+            "Remove the 'freqai' section from your configuration."
         )
-
-
-def _validate_freqai_include_timeframes(conf: dict[str, Any], preliminary: bool) -> None:
-    freqai_enabled = conf.get("freqai", {}).get("enabled", False)
-    if freqai_enabled:
-        main_tf = conf.get("timeframe", "5m")
-        freqai_include_timeframes = (
-            conf.get("freqai", {}).get("feature_parameters", {}).get("include_timeframes", [])
-        )
-
-        from freqtrade.exchange import timeframe_to_seconds
-
-        main_tf_s = timeframe_to_seconds(main_tf)
-        offending_lines = []
-        for tf in freqai_include_timeframes:
-            tf_s = timeframe_to_seconds(tf)
-            if tf_s < main_tf_s:
-                offending_lines.append(tf)
-        if offending_lines:
-            raise ConfigurationError(
-                f"Main timeframe of {main_tf} must be smaller or equal to FreqAI "
-                f"`include_timeframes`.Offending include-timeframes: {', '.join(offending_lines)}"
-            )
-
-        # Ensure that the base timeframe is included in the include_timeframes list
-        if not preliminary and main_tf not in freqai_include_timeframes:
-            feature_parameters = conf.get("freqai", {}).get("feature_parameters", {})
-            include_timeframes = [main_tf, *freqai_include_timeframes]
-            conf.get("freqai", {}).get("feature_parameters", {}).update(
-                {**feature_parameters, "include_timeframes": include_timeframes}
-            )
-
-
-def _validate_freqai_backtest(conf: dict[str, Any]) -> None:
-    if conf.get("runmode", RunMode.OTHER) == RunMode.BACKTEST:
-        freqai_enabled = conf.get("freqai", {}).get("enabled", False)
-        timerange = conf.get("timerange")
-        freqai_backtest_live_models = conf.get("freqai_backtest_live_models", False)
-        if freqai_backtest_live_models and freqai_enabled and timerange:
-            raise ConfigurationError(
-                "Using timerange parameter is not supported with "
-                "--freqai-backtest-live-models parameter."
-            )
-
-        if freqai_backtest_live_models and not freqai_enabled:
-            raise ConfigurationError(
-                "Using --freqai-backtest-live-models parameter is only "
-                "supported with a FreqAI strategy."
-            )
-
-        if freqai_enabled and not freqai_backtest_live_models and not timerange:
-            raise ConfigurationError(
-                "Please pass --timerange if you intend to use FreqAI for backtesting."
-            )
 
 
 def _validate_consumers(conf: dict[str, Any]) -> None:

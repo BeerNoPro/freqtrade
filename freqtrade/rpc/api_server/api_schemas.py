@@ -622,7 +622,6 @@ class PairCandlesRequest(BaseModel):
 class PairHistoryRequest(PairCandlesRequest, ExchangeModePayloadMixin):
     timerange: str
     strategy: StrategyName | None = None
-    freqaimodel: str | None = None
     live_mode: bool = False
 
 
@@ -650,10 +649,6 @@ class PairHistory(BaseModel):
     data_stop_ts: int
 
 
-class BacktestFreqAIInputs(BaseModel):
-    identifier: str
-
-
 class BacktestRequest(BaseModel):
     strategy: StrategyName
     timeframe: str | None = None
@@ -664,8 +659,6 @@ class BacktestRequest(BaseModel):
     enable_protections: bool
     dry_run_wallet: float | None = None
     backtest_cache: str | None = None
-    freqaimodel: str | None = None
-    freqai: BacktestFreqAIInputs | None = None
 
 
 class BacktestResponse(BaseModel):

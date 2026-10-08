@@ -449,7 +449,9 @@ Khi `position_adjustment_enable = True`, mỗi vòng `process_open_trade_positio
 | `adjust_trade_position()` | Mỗi vòng khi `position_adjustment_enable` | DCA / thoát một phần |
 | `plot_annotations()` | API `/pair_candles`, plot | Vẽ chú thích |
 | `version()` | Log heartbeat | |
-| `feature_engineering_*()`, `set_freqai_targets()` | — | Hook cũ của FreqAI; FreqAI đã bị gỡ khỏi bản này (xem trim-log) |
+
+FreqAI đã bị gỡ hoàn toàn (kể cả các hook `feature_engineering_*`, `set_freqai_targets`): config còn bật
+`freqai.enabled` sẽ bị từ chối ngay khi kiểm tra config (xem [trim-log.md](trim-log.md)).
 
 Tên cũ vẫn tương thích ngược: `populate_buy_trend`/`populate_sell_trend`, `custom_sell`, `check_buy_timeout`/`check_sell_timeout`.
 

@@ -316,7 +316,7 @@ class DataProvider:
                 else str(self._config.get("timerange"))
             )
 
-            startup_candles = self.get_required_startup(str(timeframe))
+            startup_candles = self._config.get("startup_candle_count", 0)
             tf_seconds = timeframe_to_seconds(str(timeframe))
             timerange.subtract_start(tf_seconds * startup_candles)
 
@@ -334,23 +334,6 @@ class DataProvider:
                 candle_type=_candle_type,
             )
         return self.__cached_pairs_backtesting[saved_pair].copy()
-
-    def get_required_startup(self, timeframe: str) -> int:
-        freqai_config = self._config.get("freqai", {})
-        if not freqai_config.get("enabled", False):
-            return self._config.get("startup_candle_count", 0)
-        else:
-            startup_candles = self._config.get("startup_candle_count", 0)
-            indicator_periods = freqai_config["feature_parameters"]["indicator_periods_candles"]
-            # make sure the startupcandles is at least the set maximum indicator periods
-            self._config["startup_candle_count"] = max(startup_candles, max(indicator_periods))
-            tf_seconds = timeframe_to_seconds(timeframe)
-            train_candles = freqai_config["train_period_days"] * 86400 / tf_seconds
-            total_candles = int(self._config["startup_candle_count"] + train_candles)
-            logger.info(
-                f"Increasing startup_candle_count for freqai on {timeframe} to {total_candles}"
-            )
-        return total_candles
 
     def __fix_funding_rate_timeframe(
         self, pair: str, timeframe: str | None, candle_type: str

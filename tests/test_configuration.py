@@ -932,38 +932,18 @@ def test__validate_pricing_rules(default_conf, caplog) -> None:
         validate_config_consistency(conf)
 
 
-def test__validate_freqai_include_timeframes(default_conf, caplog) -> None:
+@pytest.mark.parametrize("preliminary", [True, False])
+def test_validate_freqai_removed(default_conf, preliminary) -> None:
     conf = deepcopy(default_conf)
-    conf.update(
-        {
-            "freqai": {
-                "enabled": True,
-                "feature_parameters": {
-                    "include_timeframes": ["1m", "5m"],
-                    "include_corr_pairlist": [],
-                },
-                "data_split_parameters": {},
-                "model_training_parameters": {},
-            }
-        }
-    )
-    with pytest.raises(OperationalException, match=r"Main timeframe of .*"):
-        validate_config_consistency(conf)
-    # Validation pass
-    conf.update({"timeframe": "1m"})
-    validate_config_consistency(conf)
+    # A disabled (or absent) freqai section is harmless.
+    conf["freqai"] = {"enabled": False, "identifier": "old-model"}
+    validate_config_consistency(conf, preliminary=preliminary)
 
-    # Ensure base timeframe is in include_timeframes
-    conf["freqai"]["feature_parameters"]["include_timeframes"] = ["5m", "15m"]
-    validate_config_consistency(conf)
-    assert conf["freqai"]["feature_parameters"]["include_timeframes"] == ["1m", "5m", "15m"]
-
-    conf.update({"analyze_per_epoch": True})
-    with pytest.raises(
-        OperationalException,
-        match=r"Using analyze-per-epoch .* not supported with a FreqAI strategy.",
-    ):
-        validate_config_consistency(conf)
+    conf["freqai"]["enabled"] = True
+    with pytest.raises(ConfigurationError, match=r"FreqAI has been removed from this build\."):
+        validate_config_consistency(conf, preliminary=preliminary)
+    # ConfigurationError is an OperationalException - the bot stops with a clear message.
+    assert issubclass(ConfigurationError, OperationalException)
 
 
 def test__validate_consumers(default_conf, caplog) -> None:

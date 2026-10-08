@@ -357,28 +357,6 @@ def test_validate_orderflow(default_conf, mocker, caplog):
     ex.validate_orderflow({"use_public_trades": True})
 
 
-def test_validate_freqai_compat(default_conf, mocker, caplog):
-    caplog.set_level(logging.INFO)
-    # Simulate an exchange without historic OHLCV data.
-    ex = get_patched_exchange(mocker, default_conf, exchange="binance")
-    ex._ft_has["ohlcv_has_history"] = False
-    mocker.patch(f"{EXMS}.exchange_has", return_value=True)
-
-    default_conf["freqai"] = {"enabled": False}
-    ex.validate_freqai(default_conf)
-
-    default_conf["freqai"] = {"enabled": True}
-    with pytest.raises(ConfigurationError, match=r"Historic OHLCV data not available for.*"):
-        ex.validate_freqai(default_conf)
-
-    # Binance supports historic data.
-    ex = get_patched_exchange(mocker, default_conf, exchange="binance")
-    default_conf["freqai"] = {"enabled": True}
-    ex.validate_freqai(default_conf)
-    default_conf["freqai"] = {"enabled": False}
-    ex.validate_freqai(default_conf)
-
-
 def test_validate_demo_trading(default_conf_usdt, mocker, caplog):
     # Test - nothing enabled so nothing happens
     ex = get_patched_exchange(mocker, default_conf_usdt, exchange="binance")

@@ -63,6 +63,20 @@ def test_historic_ohlcv(mocker, default_conf, ohlcv_history):
     assert historymock.call_args_list[0][1]["timeframe"] == "5m"
 
 
+def test_historic_ohlcv_includes_startup_candles(mocker, default_conf, ohlcv_history):
+    historymock = MagicMock(return_value=ohlcv_history)
+    mocker.patch("freqtrade.data.dataprovider.load_pair_history", historymock)
+    default_conf["timerange"] = "20180110-20180111"
+    default_conf["startup_candle_count"] = 20
+
+    dp = DataProvider(default_conf, None)
+    dp.historic_ohlcv("UNITTEST/BTC", "1h")
+    timerange = historymock.call_args_list[0][1]["timerange"]
+    # Loading starts 20 candles (of the requested timeframe) before the timerange
+    assert timerange.startdt == dt_utc(2018, 1, 9, 4)
+    assert timerange.stopdt == dt_utc(2018, 1, 11)
+
+
 def test_historic_trades(mocker, default_conf, trades_history_df):
     historymock = MagicMock(return_value=trades_history_df)
     mocker.patch(
@@ -590,65 +604,6 @@ def test_dp__add_external_df(default_conf_usdt):
     # 36 hours - from 2022-01-03 12:00:00+00:00 to 2022-01-05 00:00:00+00:00
     assert isinstance(res[1], int)
     assert res[1] == 0
-
-
-def test_dp_get_required_startup(default_conf_usdt):
-    timeframe = "1h"
-    default_conf_usdt["timeframe"] = timeframe
-    dp = DataProvider(default_conf_usdt, None)
-
-    # No FreqAI config
-    assert dp.get_required_startup("5m") == 0
-    assert dp.get_required_startup("1h") == 0
-    assert dp.get_required_startup("1d") == 0
-
-    dp._config["startup_candle_count"] = 20
-    assert dp.get_required_startup("5m") == 20
-    assert dp.get_required_startup("1h") == 20
-    assert dp.get_required_startup("1h") == 20
-
-    # With freqAI config
-
-    dp._config["freqai"] = {
-        "enabled": True,
-        "train_period_days": 20,
-        "feature_parameters": {
-            "indicator_periods_candles": [
-                5,
-                20,
-            ]
-        },
-    }
-    assert dp.get_required_startup("5m") == 5780
-    assert dp.get_required_startup("1h") == 500
-    assert dp.get_required_startup("1d") == 40
-
-    # FreqAI kindof ignores startup_candle_count if it's below indicator_periods_candles
-    dp._config["startup_candle_count"] = 0
-    assert dp.get_required_startup("5m") == 5780
-    assert dp.get_required_startup("1h") == 500
-    assert dp.get_required_startup("1d") == 40
-
-    dp._config["freqai"]["feature_parameters"]["indicator_periods_candles"][1] = 50
-    assert dp.get_required_startup("5m") == 5810
-    assert dp.get_required_startup("1h") == 530
-    assert dp.get_required_startup("1d") == 70
-
-    # scenario from issue https://github.com/freqtrade/freqtrade/issues/9432
-    dp._config["freqai"] = {
-        "enabled": True,
-        "train_period_days": 180,
-        "feature_parameters": {
-            "indicator_periods_candles": [
-                10,
-                20,
-            ]
-        },
-    }
-    dp._config["startup_candle_count"] = 40
-    assert dp.get_required_startup("5m") == 51880
-    assert dp.get_required_startup("1h") == 4360
-    assert dp.get_required_startup("1d") == 220
 
 
 def test_check_delisting(mocker, default_conf_usdt):

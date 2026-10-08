@@ -2290,21 +2290,8 @@ def test_expand_pairlist(wildcardlist, pairs, expected):
             expand_pairlist(wildcardlist, pairs)
     else:
         assert sorted(expand_pairlist(wildcardlist, pairs)) == sorted(expected)
-        conf = {
-            "pairs": wildcardlist,
-            "freqai": {
-                "enabled": True,
-                "feature_parameters": {
-                    "include_corr_pairlist": [
-                        "BTC/USDT:USDT",
-                        "XRP/BUSD",
-                    ]
-                },
-            },
-        }
-        assert sorted(dynamic_expand_pairlist(conf, pairs)) == sorted(
-            [*expected, "BTC/USDT:USDT", "XRP/BUSD"]
-        )
+        conf = {"pairs": wildcardlist}
+        assert sorted(dynamic_expand_pairlist(conf, pairs)) == sorted(expected)
 
 
 @pytest.mark.parametrize(

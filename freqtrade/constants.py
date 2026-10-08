@@ -120,7 +120,6 @@ FTHYPT_FILEVERSION = "fthypt_fileversion"
 USERPATH_HYPEROPTS = "hyperopts"
 USERPATH_STRATEGIES = "strategies"
 USERPATH_NOTEBOOKS = "notebooks"
-USERPATH_FREQAIMODELS = "freqaimodels"
 
 TELEGRAM_SETTING_OPTIONS = ["on", "off", "silent"]
 WEBHOOK_FORMAT_OPTIONS = ["form", "json", "raw"]

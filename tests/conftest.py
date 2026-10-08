@@ -497,37 +497,9 @@ def fixture_set_mp_start_method():
     set_mp_start_method()
 
 
-def is_arm(include_aarch64: bool = False) -> bool:
-    machine = platform.machine()
-    if include_aarch64:
-        return "aarch64" in machine or "arm" in machine
-    return "arm" in machine
-
-
 def is_mac() -> bool:
     machine = platform.system()
     return "Darwin" in machine
-
-
-@pytest.fixture(autouse=True)
-def patch_torch_initlogs(mocker) -> None:
-    if is_mac():
-        # Mock torch import completely
-        import sys
-        import types
-
-        module_name = "torch"
-        mocked_module = types.ModuleType(module_name)
-        # SciPy's array-API dispatch probes ``torch.Tensor`` to classify inputs;
-        # expose a dummy so scipy.stats stays importable/usable under the mock.
-        mocked_module.Tensor = type("Tensor", (), {})
-        sys.modules[module_name] = mocked_module
-    else:
-        try:
-            mocker.patch("torch._logging._init_logs")
-        except ModuleNotFoundError:
-            # Allow running limited tests to run without freqAI dependencies
-            pass
 
 
 @pytest.fixture(autouse=True)
