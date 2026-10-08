@@ -537,10 +537,6 @@ CONF_SCHEMA = {
             "description": "Logging configuration.",
             "$ref": "#/definitions/logging",
         },
-        "external_message_consumer": {
-            "description": "Configuration for external message consumer.",
-            "$ref": "#/definitions/external_message_consumer",
-        },
         "experimental": {
             "description": "Experimental configuration.",
             "type": "object",
@@ -1025,86 +1021,6 @@ CONF_SCHEMA = {
                 "root": {"type": "object"},
             },
             "required": ["version", "formatters", "handlers", "root"],
-        },
-        "external_message_consumer": {
-            "description": "Configuration for external message consumer.",
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "description": "Whether the external message consumer is enabled.",
-                    "type": "boolean",
-                    "default": False,
-                },
-                "producers": {
-                    "description": "List of producers for the external message consumer.",
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "description": "Name of the producer.",
-                                "type": "string",
-                            },
-                            "host": {
-                                "description": "Host of the producer.",
-                                "type": "string",
-                            },
-                            "port": {
-                                "description": "Port of the producer.",
-                                "type": "integer",
-                                "default": 8080,
-                                "minimum": 0,
-                                "maximum": 65535,
-                            },
-                            "secure": {
-                                "description": "Whether to use SSL to connect to the producer.",
-                                "type": "boolean",
-                                "default": False,
-                            },
-                            "ws_token": {
-                                "description": "WebSocket token for the producer.",
-                                "type": "string",
-                            },
-                        },
-                        "required": ["name", "host", "ws_token"],
-                    },
-                },
-                "wait_timeout": {
-                    "description": "Wait timeout in seconds.",
-                    "type": "integer",
-                    "minimum": 0,
-                },
-                "sleep_time": {
-                    "description": "Sleep time in seconds before retrying to connect.",
-                    "type": "integer",
-                    "minimum": 0,
-                },
-                "ping_timeout": {
-                    "description": "Ping timeout in seconds.",
-                    "type": "integer",
-                    "minimum": 0,
-                },
-                "remove_entry_exit_signals": {
-                    "description": "Remove signal columns from the dataframe (set them to 0)",
-                    "type": "boolean",
-                    "default": False,
-                },
-                "initial_candle_limit": {
-                    "description": "Initial candle limit.",
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 1500,
-                    "default": 1500,
-                },
-                "message_size_limit": {
-                    "description": "Message size limit in megabytes.",
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 20,
-                    "default": 8,
-                },
-            },
-            "required": ["producers"],
         },
     },
 }

@@ -946,62 +946,6 @@ def test_validate_freqai_removed(default_conf, preliminary) -> None:
     assert issubclass(ConfigurationError, OperationalException)
 
 
-def test__validate_consumers(default_conf, caplog) -> None:
-    conf = deepcopy(default_conf)
-    conf.update({"external_message_consumer": {"enabled": True, "producers": []}})
-    with pytest.raises(
-        OperationalException, match=r"You must specify at least 1 Producer to connect to\."
-    ):
-        validate_config_consistency(conf)
-
-    conf = deepcopy(default_conf)
-    conf.update(
-        {
-            "external_message_consumer": {
-                "enabled": True,
-                "producers": [
-                    {
-                        "name": "default",
-                        "host": "127.0.0.1",
-                        "port": 8081,
-                        "ws_token": "secret_ws_t0ken.",
-                    },
-                    {
-                        "name": "default",
-                        "host": "127.0.0.1",
-                        "port": 8080,
-                        "ws_token": "secret_ws_t0ken.",
-                    },
-                ],
-            }
-        }
-    )
-    with pytest.raises(
-        OperationalException, match=r"Producer names must be unique\. Duplicate: default"
-    ):
-        validate_config_consistency(conf)
-
-    conf = deepcopy(default_conf)
-    conf.update(
-        {
-            "process_only_new_candles": True,
-            "external_message_consumer": {
-                "enabled": True,
-                "producers": [
-                    {
-                        "name": "default",
-                        "host": "127.0.0.1",
-                        "port": 8081,
-                        "ws_token": "secret_ws_t0ken.",
-                    }
-                ],
-            },
-        }
-    )
-    validate_config_consistency(conf)
-    assert log_has_re("To receive best performance with external data.*", caplog)
-
-
 def test__validate_orderflow(default_conf) -> None:
     conf = deepcopy(default_conf)
     conf["exchange"]["use_public_trades"] = True

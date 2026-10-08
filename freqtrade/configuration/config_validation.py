@@ -1,5 +1,4 @@
 import logging
-from collections import Counter
 from copy import deepcopy
 from typing import Any
 
@@ -87,7 +86,6 @@ def validate_config_consistency(conf: dict[str, Any], *, preliminary: bool = Fal
     _validate_unlimited_amount(conf)
     _validate_ask_orderbook(conf)
     _validate_freqai_removed(conf)
-    _validate_consumers(conf)
     validate_migrated_strategy_settings(conf)
     _validate_orderflow(conf)
     _validate_demo_trading(conf)
@@ -329,26 +327,6 @@ def _validate_freqai_removed(conf: dict[str, Any]) -> None:
             "FreqAI has been removed from this build. "
             "Remove the 'freqai' section from your configuration."
         )
-
-
-def _validate_consumers(conf: dict[str, Any]) -> None:
-    emc_conf = conf.get("external_message_consumer", {})
-    if emc_conf.get("enabled", False):
-        if len(emc_conf.get("producers", [])) < 1:
-            raise ConfigurationError("You must specify at least 1 Producer to connect to.")
-
-        producer_names = [p["name"] for p in emc_conf.get("producers", [])]
-        duplicates = [item for item, count in Counter(producer_names).items() if count > 1]
-        if duplicates:
-            raise ConfigurationError(
-                f"Producer names must be unique. Duplicate: {', '.join(duplicates)}"
-            )
-        if conf.get("process_only_new_candles", True):
-            # Warning here or require it?
-            logger.warning(
-                "To receive best performance with external data, "
-                "please set `process_only_new_candles` to False"
-            )
 
 
 def _validate_orderflow(conf: dict[str, Any]) -> None:

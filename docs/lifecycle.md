@@ -27,7 +27,7 @@
 - [R. Backtesting](#r-backtesting)
 - [S. Hyperopt](#s-hyperopt)
 - [T. Lookahead / Recursive analysis](#t-lookahead--recursive-analysis)
-- [U. Producer / Consumer](#u-producer--consumer)
+- [U. WebSocket của API (producer)](#u-websocket-của-api-producer)
 - [V. Những điểm hay hiểu nhầm](#v-những-điểm-hay-hiểu-nhầm)
 
 ---
@@ -51,13 +51,12 @@ main.py: main()                                  → Arguments → args["func"]
              5. Wallets                            số dư
              6. RPCManager                         Telegram/Webhook/API server (thread riêng)
              7. DataProvider, PairListManager      gắn dp + wallets vào strategy
-             8. ExternalMessageConsumer            nếu bật producer/consumer
-             9. _refresh_active_whitelist()        chạy pairlist lần đầu
-            10. state = initial_state (config)
-            11. Scheduler: futures → funding fee + giá thanh lý (phút 1 và 31 mỗi giờ)
+             8. _refresh_active_whitelist()        chạy pairlist lần đầu
+             9. state = initial_state (config)
+            10. Scheduler: futures → funding fee + giá thanh lý (phút 1 và 31 mỗi giờ)
                            00:02 reset WS, 00:07 ghi lịch sử ví
-            12. strategy.ft_bot_start()            → callback bot_start() + nạp tham số hyperopt
-            13. ProtectionManager                  khởi tạo SAU bot_start (để đọc được tham số)
+            11. strategy.ft_bot_start()            → callback bot_start() + nạp tham số hyperopt
+            12. ProtectionManager                  khởi tạo SAU bot_start (để đọc được tham số)
  └─ Worker.run() → khi state chuyển sang RUNNING/PAUSED lần đầu → FreqtradeBot.startup():
              migrate DB, gửi thông báo khởi động, cập nhật precision trade cũ,
              Trade.stoploss_reinitialization() (nếu đổi stoploss), cập nhật lệnh mở từ sàn
@@ -93,7 +92,6 @@ Ví dụ: config có `"timeframe": "5m"` thì strategy khai báo `15m` cũng b�
 | Main | `Worker` → `FreqtradeBot.process()` | Toàn bộ logic giao dịch chạy tuần tự ở đây |
 | `FTUvicorn` (nếu bật `api_server`) | REST API + WebUI + WebSocket | [uvicorn_threaded.py](../freqtrade/rpc/api_server/uvicorn_threaded.py) |
 | `FTTelegram` (nếu bật `telegram`) | Bot Telegram | [telegram.py](../freqtrade/rpc/telegram.py) |
-| EMC (tùy chọn) | Nhận dữ liệu từ bot producer | [external_message_consumer.py](../freqtrade/rpc/external_message_consumer.py) |
 
 API/Telegram gọi thẳng vào đối tượng bot (qua `RPC`). Các thao tác vào/thoát lệnh từ đó được đồng bộ
 với vòng lặp chính bằng **`FreqtradeBot._exit_lock`**.
@@ -176,8 +174,7 @@ với mỗi cặp (tuần tự):
 StaticPairList,              AgeFilter, PriceFilter, SpreadFilter,
 VolumePairList,              VolatilityFilter, PerformanceFilter,
 MarketCapPairList,           RangeStabilityFilter, ShuffleFilter, ...
-RemotePairList (URL),
-ProducerPairList, ...
+RemotePairList (URL), ...
 ```
 - Blacklist (`pair_blacklist`, hỗ trợ regex) bị loại khỏi kết quả.
 - Sau khi tạo whitelist, bot **luôn thêm các cặp đang có lệnh mở** để vẫn tải nến và quản lý thoát cho chúng.
@@ -529,12 +526,13 @@ Code: [optimize/analysis/](../freqtrade/optimize/analysis/)
 
 ---
 
-## U. Producer / Consumer
+## U. WebSocket của API (producer)
 
-- Bot **producer** phát qua WebSocket: whitelist và dataframe đã phân tích (kèm cột tín hiệu).
-- Bot **consumer** ([external_message_consumer.py](../freqtrade/rpc/external_message_consumer.py)) nhận và lưu vào DataProvider. Có thể xóa cột tín hiệu bằng `remove_entry_exit_signals`.
-- Consumer **không tự trade theo tín hiệu producer**. Strategy của consumer phải tự đọc `self.dp.get_producer_df(pair)` rồi đặt `enter_long`... trong `populate_entry_trend`.
-- Pairlist `ProducerPairList` dùng whitelist của producer.
+- Khi bật `api_server`, bot phát sự kiện qua WebSocket `/api/v1/message/ws` (xác thực bằng `ws_token` hoặc JWT
+  của phiên đăng nhập): whitelist,
+  nến mới, dataframe đã phân tích (`DataProvider._emit_df`), entry/exit fill... FreqUI dùng kênh này để cập nhật realtime.
+- Phía **consumer** (bot nhận dữ liệu từ bot khác qua `external_message_consumer`, `ProducerPairList`,
+  `dp.get_producer_df`) đã bị gỡ khỏi bản này (xem [trim-log.md](trim-log.md)).
 
 ---
 
@@ -552,5 +550,4 @@ Code: [optimize/analysis/](../freqtrade/optimize/analysis/)
 | Strategy khai báo `timeframe` là đủ | Config có `timeframe` sẽ ghi đè strategy |
 | `populate_indicators` chạy lại mỗi epoch hyperopt | Chỉ chạy 1 lần |
 | `/forceenter` an toàn như tín hiệu strategy | Bỏ qua locks/protections; `leverage` gửi kèm bỏ qua callback |
-| Consumer tự trade theo producer | Phải tự đọc `dp.get_producer_df()` |
 | `confirm_trade_exit()` không ảnh hưởng stoploss | Trả về False chặn được cả thoát do stoploss phía bot (trừ thanh lý) |

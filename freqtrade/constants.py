@@ -61,7 +61,6 @@ AVAILABLE_PAIRLISTS = [
     "StaticPairList",
     "VolumePairList",
     "PercentChangePairList",
-    "ProducerPairList",
     "RemotePairList",
     "MarketCapPairList",
     "CrossMarketPairList",
@@ -123,7 +122,6 @@ USERPATH_NOTEBOOKS = "notebooks"
 
 TELEGRAM_SETTING_OPTIONS = ["on", "off", "silent"]
 WEBHOOK_FORMAT_OPTIONS = ["form", "json", "raw"]
-FULL_DATAFRAME_THRESHOLD = 100
 CUSTOM_TAG_MAX_LENGTH = 255
 DL_DATA_TIMEFRAMES = ["1m", "5m"]
 

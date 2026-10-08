@@ -170,7 +170,7 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 
 | File | Vai trò |
 |---|---|
-| [dataprovider.py](../freqtrade/data/dataprovider.py) | **`DataProvider`** (`self.dp` trong strategy): `ohlcv`, `get_pair_dataframe`, `get_analyzed_dataframe`, `orderbook`, `ticker`, `funding_rate`, `send_msg`, `get_producer_df`, `current_whitelist`, `runmode` |
+| [dataprovider.py](../freqtrade/data/dataprovider.py) | **`DataProvider`** (`self.dp` trong strategy): `ohlcv`, `get_pair_dataframe`, `get_analyzed_dataframe`, `orderbook`, `ticker`, `funding_rate`, `send_msg`, `current_whitelist`, `runmode` |
 | history/history_utils.py | Tải/cập nhật/nạp dữ liệu lịch sử (`download-data`, backtest) |
 | history/datahandlers/ | `IDataHandler` + định dạng feather (mặc định), json, parquet, arrow |
 | converter/converter.py | OHLCV ↔ DataFrame, bỏ nến chưa đóng, `trim_dataframe` |
@@ -212,7 +212,7 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 ### `pairlist/`
 | Loại | Plugin |
 |---|---|
-| Generator (`is_pairlist_generator`) | `StaticPairList`, `VolumePairList`, `PercentChangePairList`, `MarketCapPairList`, `ProducerPairList`, `RemotePairList`, `CrossMarketPairList` |
+| Generator (`is_pairlist_generator`) | `StaticPairList`, `VolumePairList`, `PercentChangePairList`, `MarketCapPairList`, `RemotePairList`, `CrossMarketPairList` |
 | Filter | `AgeFilter`, `DelistFilter`, `FullTradesFilter`, `OffsetFilter`, `PairInformationFilter`, `PerformanceFilter`, `PrecisionFilter`, `PriceFilter`, `RangeStabilityFilter`, `ShuffleFilter`, `SpreadFilter`, `VolatilityFilter` |
 | Cơ sở | `IPairList`, pairlist_helpers.py |
 
@@ -250,7 +250,6 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 | rpc_types.py | Kiểu message gửi đi |
 | telegram.py (2336 dòng) | Bot Telegram (thread `FTTelegram`) |
 | webhook.py | Gửi sự kiện ra URL ngoài (có retry/timeout) |
-| external_message_consumer.py | Consumer: nhận whitelist + dataframe từ bot producer qua WebSocket |
 | fiat_convert.py | Quy đổi tiền pháp định (CoinGecko) |
 
 ### `rpc/api_server/` — REST API + WebUI (FastAPI, thread `FTUvicorn`)
@@ -263,7 +262,7 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 | api_backtest.py, api_analysis.py, api_background_tasks.py | Chạy backtest, lookahead/recursive analysis qua API (chế độ webserver) |
 | api_pair_history.py, api_pairlists.py, api_download_data.py | Lịch sử cặp (phân tích lại toàn bộ dữ liệu), thử pairlist, tải data |
 | api_webserver.py | Chỉ ở chế độ `webserver`: liệt kê strategies, exchanges, hàm loss |
-| api_ws.py, ws/ (channel, message_stream, proxy, serializer, ws_types), ws_schemas.py | WebSocket: phát sự kiện + dataframe (producer) |
+| api_ws.py, ws/ (channel, message_stream, proxy, serializer, ws_types), ws_schemas.py | WebSocket `/message/ws`: phát sự kiện + dataframe (producer) cho FreqUI |
 | api_schemas.py | Pydantic schema request/response |
 | deps.py | Dependency injection (`get_rpc`, `get_config`...) |
 | web_ui.py | Phục vụ FreqUI (`ui/installed/`) |
