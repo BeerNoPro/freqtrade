@@ -74,7 +74,6 @@ dependencies = [
   "python-dateutil",
   "pytz",
   "packaging",
-  "freqtrade-client",
   # hyperopt
   "cmaes",
   "filelock",
@@ -146,9 +145,6 @@ filterwarnings = [
 ignore_missing_imports = true
 namespace_packages = false
 warn_unused_ignores = true
-exclude = [
-    '^ft_client/build/.*$',
-]
 plugins = [
   "sqlalchemy.ext.mypy.plugin"
 ]
@@ -166,10 +162,9 @@ module = [
 disable_error_code = "attr-defined"
 
 [tool.pyright]
-include = ["freqtrade", "ft_client"]
+include = ["freqtrade"]
 exclude = [
   "**/__pycache__",
-  "ft_client/build/*",
   "build/*",
 ]
 ignore = ["freqtrade/vendor/**"]
@@ -273,10 +268,6 @@ extend-ignore = [
   "RUF100",  # Allow unused noqa
 ]
 
-"ft_client/test_client/**.py" = [
-  "S101",  # allow assert in tests
-]
-
 [tool.ruff.lint.mccabe]
 max-complexity = 12
 
@@ -286,7 +277,6 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2
-known-first-party = ["freqtrade_client"]
 
 [tool.flake8]
 # Default from https://flake8.pycqa.org/en/latest/user/options.html#cmdoption-flake8-ignore
