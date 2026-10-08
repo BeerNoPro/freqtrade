@@ -34,7 +34,7 @@ def test_validate_is_int():
     assert not validate_is_int("-ee")
 
 
-@pytest.mark.parametrize("exchange", ["bybit", "binance", "kraken"])
+@pytest.mark.parametrize("exchange", ["binance", "binanceus"])
 def test_start_new_config(mocker, caplog, exchange):
     wt_mock = mocker.patch.object(Path, "write_text", MagicMock())
     mocker.patch.object(Path, "exists", MagicMock(return_value=True))
@@ -120,3 +120,23 @@ def test_ask_user_config(mocker):
 
     with pytest.raises(OperationalException, match=r"User interrupted interactive questions\."):
         ask_user_config()
+
+
+def test_ask_user_config_offers_binance_only(mocker):
+    prompt_mock = mocker.patch(
+        "freqtrade.configuration.deploy_config.prompt", return_value={"dry_run": True}
+    )
+    ask_user_config()
+    questions = prompt_mock.call_args[0][0]
+    by_name: dict[str, list[dict]] = {}
+    for question in questions:
+        by_name.setdefault(question["name"], []).append(question)
+
+    exchange_select = next(q for q in by_name["exchange_name"] if q["type"] == "select")
+    assert [c for c in exchange_select["choices"] if isinstance(c, str)] == ["binance", "other"]
+
+    futures_question = by_name["trading_mode"][0]
+    assert futures_question["when"]({"exchange_name": "binance"})
+    assert not futures_question["when"]({"exchange_name": "other"})
+    # Passphrase prompt only existed for exchanges that were removed
+    assert "exchange_api_key_password" not in by_name

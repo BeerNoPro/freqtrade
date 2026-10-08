@@ -911,14 +911,6 @@ def test_execute_entry(
     exchange_name = binance, is_short = false
         ((wb + cum_b) - (side_1 * position * ep1)) / ((position * mmr_b) - (side_1 * position))
         ((2 + 0.01) - (1 * 1 * 10)) / ((1 * 0.01) - (1 * 1)) = 8.070707070707071
-
-    exchange_name = gate/okx, is_short = true
-        (open_rate + (wallet_balance / position)) / (1 + (mm_ratio + taker_fee_rate))
-        (10 + (2 / 1)) / (1 + (0.01 + 0.0006)) = 11.87413417771621
-
-    exchange_name = gate/okx, is_short = false
-        (open_rate - (wallet_balance / position)) / (1 - (mm_ratio + taker_fee_rate))
-        (10 - (2 / 1)) / (1 - (0.01 + 0.0006)) = 8.085708510208207
     """
     # TODO: Split this test into multiple tests to improve readability
     open_order = limit_order_open[entry_side(is_short)]
@@ -2697,11 +2689,6 @@ def test_handle_cancel_enter(mocker, caplog, default_conf_usdt, limit_order, is_
 
 
 @pytest.mark.parametrize("is_short", [False, True])
-@pytest.mark.parametrize(
-    "limit_buy_order_canceled_empty",
-    ["binance", "kraken", "bybit"],
-    indirect=["limit_buy_order_canceled_empty"],
-)
 def test_handle_cancel_enter_exchanges(
     mocker, caplog, default_conf_usdt, is_short, fee, limit_buy_order_canceled_empty
 ) -> None:

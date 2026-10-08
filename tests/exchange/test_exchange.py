@@ -1055,7 +1055,7 @@ def test_validate_required_startup_candles(default_conf, mocker, caplog):
     with pytest.raises(OperationalException, match=r"This strategy requires 6000.*"):
         Exchange(default_conf)
 
-    # Emulate kraken mode
+    # Emulate an exchange without OHLCV history (only one call possible)
     ex._ft_has["ohlcv_has_history"] = False
     with pytest.raises(
         OperationalException,
@@ -1568,7 +1568,7 @@ def test_create_order(default_conf, mocker, side, ordertype, rate, marketprice, 
     exchange._set_leverage = MagicMock()
     exchange.set_margin_mode = MagicMock()
 
-    # Only applies to gate
+    # Only applies to exchanges that require a price for market orders
     price_req = exchange._ft_has.get("marketOrderRequiresPrice", False)
 
     order = exchange.create_order(
@@ -1605,11 +1605,8 @@ def test_create_order(default_conf, mocker, side, ordertype, rate, marketprice, 
         pair="ADA/USDT:USDT", ordertype=ordertype, side=side, amount=1, rate=200, leverage=3.0
     )
 
-    if exchange_name != "okx":
-        assert exchange._set_leverage.call_count == 1
-        assert exchange.set_margin_mode.call_count == 1
-    else:
-        assert api_mock.set_leverage.call_count == 1
+    assert exchange._set_leverage.call_count == 1
+    assert exchange.set_margin_mode.call_count == 1
     assert order["amount"] == 0.01
 
 
@@ -2039,8 +2036,6 @@ def test_fetch_orders(default_conf, mocker, exchange_name, limit_order):
     mocker.patch(f"{EXMS}.exchange_has", return_value=True)
     start_time = datetime.now(UTC) - timedelta(days=20)
     expected = 1
-    if exchange_name == "bybit":
-        expected = 3
 
     exchange = get_patched_exchange(mocker, default_conf, api_mock, exchange=exchange_name)
     # Not available in dry-run
@@ -2068,10 +2063,6 @@ def test_fetch_orders(default_conf, mocker, exchange_name, limit_order):
             return True
         if endpoint == "fetchCanceledOrders":
             return True
-
-    if exchange_name == "okx":
-        # Special OKX case is tested separately
-        return
 
     mocker.patch(f"{EXMS}.exchange_has", has_resp)
 
@@ -2110,7 +2101,7 @@ def test_fetch_orders(default_conf, mocker, exchange_name, limit_order):
     assert api_mock.fetch_canceled_orders.call_count == expected
 
 
-@pytest.mark.parametrize("exchange_name", [ex for ex in EXCHANGES if ex != "bybit"])
+@pytest.mark.parametrize("exchange_name", EXCHANGES)
 @pytest.mark.parametrize(
     "call_config, expected",
     [
@@ -2157,10 +2148,6 @@ def test_fetch_orders_multi(
             return call_config[1]
         if endpoint == "fetchCanceledOrders":
             return call_config[3]
-
-    if exchange_name == "okx":
-        # Special OKX case is tested separately
-        return
 
     mocker.patch(f"{EXMS}.exchange_has", has_resp)
 
@@ -3590,7 +3577,7 @@ def test_refresh_latest_ohlcv_open_interest(mocker, default_conf_usdt, time_mach
     assert len(second) == len(ohlcv)
 
 
-@pytest.mark.parametrize("exchange_name", [e for e in EXCHANGES if e not in ["okx"]])
+@pytest.mark.parametrize("exchange_name", EXCHANGES)
 def test_ohlcv_candle_limit_open_interest(default_conf, mocker, exchange_name):
     default_conf["trading_mode"] = "futures"
     default_conf["margin_mode"] = "isolated"
@@ -4163,10 +4150,7 @@ async def test__async_fetch_trades(
     assert isinstance(res[0], list)
     assert isinstance(res[1], list)
     if exchange._ft_has["trades_pagination"] == "id":
-        if exchange_name == "kraken":
-            assert pagid == 1565798399872512133
-        else:
-            assert pagid == "126181333"
+        assert pagid == "126181333"
     else:
         assert pagid == 1565798399872
 
@@ -4184,10 +4168,7 @@ async def test__async_fetch_trades(
     assert exchange._api_async.fetch_trades.call_args[1]["params"] == {"from": "123"}
 
     if exchange._ft_has["trades_pagination"] == "id":
-        if exchange_name == "kraken":
-            assert pagid == 1565798399872512133
-        else:
-            assert pagid == "126181333"
+        assert pagid == "126181333"
     else:
         assert pagid == 1565798399872
 
@@ -4303,8 +4284,7 @@ async def test__async_get_trade_history_id(
     assert isinstance(ret, tuple)
     assert ret[0] == pair
     assert isinstance(ret[1], list)
-    if exchange_name != "kraken":
-        assert len(ret[1]) == len(fetch_trades_result)
+    assert len(ret[1]) == len(fetch_trades_result)
     assert exchange._api_async.fetch_trades.call_count == 3
     fetch_trades_cal = exchange._api_async.fetch_trades.call_args_list
     # first call (using since, not fromId)
@@ -4315,24 +4295,6 @@ async def test__async_get_trade_history_id(
     assert fetch_trades_cal[1][0][0] == pair
     assert "params" in fetch_trades_cal[1][1]
     assert exchange._ft_has["trades_pagination_arg"] in fetch_trades_cal[1][1]["params"]
-
-
-@pytest.mark.parametrize(
-    "trade_id, expected",
-    [
-        ("1234", True),
-        ("170544369512007228", True),
-        ("1705443695120072285", True),
-        ("170544369512007228555", True),
-    ],
-)
-@pytest.mark.parametrize("exchange_name", EXCHANGES)
-def test__valid_trade_pagination_id(mocker, default_conf_usdt, exchange_name, trade_id, expected):
-    if exchange_name == "kraken":
-        pytest.skip("Kraken has a different pagination id format, and an explicit test.")
-    exchange = get_patched_exchange(mocker, default_conf_usdt, exchange=exchange_name)
-
-    assert exchange._valid_trade_pagination_id("XRP/USDT", trade_id) == expected
 
 
 @pytest.mark.parametrize("exchange_name", EXCHANGES)
@@ -4785,13 +4747,8 @@ def test_fetch_stoploss_order(default_conf, mocker, exchange_name):
     api_mock.fetch_order = MagicMock(return_value={"id": "123", "symbol": "TKN/BTC"})
     exchange = get_patched_exchange(mocker, default_conf, api_mock, exchange=exchange_name)
     res = {"id": "123", "symbol": "TKN/BTC"}
-    if exchange_name == "okx":
-        res = {"id": "123", "symbol": "TKN/BTC", "type": "stoploss"}
     assert exchange.fetch_stoploss_order("X", "TKN/BTC") == res
 
-    if exchange_name == "okx":
-        # Tested separately.
-        return
     with pytest.raises(InvalidOrderException):
         api_mock.fetch_order = MagicMock(side_effect=ccxt.InvalidOrder("Order not found"))
         exchange = get_patched_exchange(mocker, default_conf, api_mock, exchange=exchange_name)
@@ -5406,15 +5363,10 @@ def test_get_markets_error(default_conf, mocker):
 
 @pytest.mark.parametrize("exchange_name", EXCHANGES)
 def test_ohlcv_candle_limit(default_conf, mocker, exchange_name):
-    if exchange_name == "okx":
-        pytest.skip("Tested separately for okx")
     exchange = get_patched_exchange(mocker, default_conf, exchange=exchange_name)
     timeframes = ("1m", "5m", "1h")
     expected = exchange._ft_has.get("ohlcv_candle_limit", 500)
     for timeframe in timeframes:
-        # if 'ohlcv_candle_limit_per_timeframe' in exchange._ft_has:
-        # expected = exchange._ft_has['ohlcv_candle_limit_per_timeframe'][timeframe]
-        # This should only run for htx
         assert exchange.ohlcv_candle_limit(timeframe, CandleType.SPOT) == expected
 
 
@@ -6075,16 +6027,7 @@ def test_combine_funding_and_mark(
         ("binance", 0, 2, "2021-09-01 00:00:01", "2021-09-01 08:00:00", 30.0, -0.00091409999),
         ("binance", 0, 2, "2021-08-31 23:58:00", "2021-09-01 08:00:00", 30.0, -0.00091409999),
         ("binance", 0, 2, "2021-09-01 00:10:01", "2021-09-01 08:00:00", 30.0, -0.0002493),
-        # TODO: Uncomment once _calculate_funding_fees can pass time_in_ratio to exchange.
-        # ('kraken', "2021-09-01 00:00:00", "2021-09-01 08:00:00",  30.0, -0.0014937),
-        # ('kraken', "2021-09-01 00:00:15", "2021-09-01 08:00:00",  30.0, -0.0008289),
-        # ('kraken', "2021-09-01 01:00:14", "2021-09-01 08:00:00",  30.0, -0.0008289),
-        # ('kraken', "2021-09-01 00:00:00", "2021-09-01 07:59:59",  30.0, -0.0012443999999999999),
-        # ('kraken', "2021-09-01 00:00:00", "2021-09-01 12:00:00", 30.0,  0.0045759),
-        # ('kraken', "2021-09-01 00:00:01", "2021-09-01 08:00:00",  30.0, -0.0008289),
         ("binance", 0, 2, "2021-09-01 00:00:00", "2021-09-01 08:00:00", 50.0, -0.0015235),
-        # TODO: Uncomment once _calculate_funding_fees can pass time_in_ratio to exchange.
-        # ('kraken', "2021-09-01 00:00:00", "2021-09-01 08:00:00",  50.0, -0.0024895),
     ],
 )
 def test__fetch_and_calculate_funding_fees(
@@ -6138,10 +6081,7 @@ def test__fetch_and_calculate_funding_fees(
     """
     d1 = datetime.strptime(f"{d1} +0000", "%Y-%m-%d %H:%M:%S %z")
     d2 = datetime.strptime(f"{d2} +0000", "%Y-%m-%d %H:%M:%S %z")
-    funding_rate_history = {
-        "binance": funding_rate_history_octohourly,
-        "gate": funding_rate_history_octohourly,
-    }[exchange][rate_start:rate_end]
+    funding_rate_history = funding_rate_history_octohourly[rate_start:rate_end]
     api_mock = MagicMock()
     api_mock.fetch_funding_rate_history = AsyncMock(return_value=funding_rate_history)
     api_mock.fetch_ohlcv = AsyncMock(return_value=mark_ohlcv)
@@ -6336,7 +6276,7 @@ def test__order_contracts_to_amount(
             "info": {},
         },
         {
-            # Realistic stoploss order on gate.
+            # Stoploss order with most fields unset, as some exchanges return them.
             "id": "123456380",
             "clientOrderId": "12345638203",
             "timestamp": None,
@@ -6502,8 +6442,6 @@ def test_amount_to_contract_precision(
 @pytest.mark.parametrize(
     "exchange_name,open_rate,is_short,trading_mode,margin_mode",
     [
-        # Bybit
-        # Binance
         ("binance", 2.0, False, "spot", None),
         ("binance", 2.0, False, "spot", "cross"),
         ("binance", 2.0, True, "spot", "isolated"),
@@ -6633,9 +6571,6 @@ def test_get_max_pair_stake_amount(
 
 @pytest.mark.parametrize("exchange_name", EXCHANGES)
 def test_load_leverage_tiers(mocker, default_conf, exchange_name):
-    if exchange_name == "bybit":
-        # TODO: remove once get_leverage_tiers workaround has been removed.
-        pytest.skip("Currently skipping")
     api_mock = MagicMock()
     api_mock.fetch_leverage_tiers = MagicMock()
     type(api_mock).has = PropertyMock(return_value={"fetchLeverageTiers": True})
@@ -7049,11 +6984,6 @@ def test_get_liquidation_price1(mocker, default_conf):
         (False, "futures", "binance", "isolated", 5, 8, 1.0, (0.01, 0.01), 6.454545454545454),
         (False, "futures", "binance", "isolated", 3, 10, 1.0, (0.01, 0.01), 6.723905723905723),
         (False, "futures", "binance", "isolated", 5, 10, 0.6, (0.01, 0.01), 8.063973063973064),
-        # Gate/okx, short
-        # Gate/okx, long
-        # bybit, long
-        # From the bybit example - without additional margin
-        # bybit, short
     ],
 )
 def test_get_liquidation_price(
@@ -7099,28 +7029,6 @@ def test_get_liquidation_price(
         ((2 + 0.01) - (1 * 0.6 * 10)) / ((0.6 * 0.01) - (1 * 0.6)) = 6.717171717171718
     leverage = 5, open_rate = 10, amount = 0.6
         ((1.6 + 0.01) - (1 * 0.6 * 10)) / ((0.6 * 0.01) - (1 * 0.6)) = 7.39057239057239
-
-    Gate/Okx, Short
-    leverage = 5, open_rate = 10, amount = 1.0
-        (open_rate + (wallet_balance / position)) / (1 + (mm_ratio + taker_fee_rate))
-        (10 + (2 / 1.0)) / (1 + (0.01 + 0.0006)) = 11.87413417771621
-    leverage = 5, open_rate = 10, amount = 2.0
-        (10 + (4 / 2.0)) / (1 + (0.01 + 0.0006)) = 11.87413417771621
-    leverage = 3, open_rate = 10, amount = 1.0
-        (10 + (3.3333333333333 / 1.0)) / (1 - (0.01 + 0.0006)) = 13.476180850346978
-    leverage = 5, open_rate = 8, amount = 1.0
-        (8 + (1.6 / 1.0)) / (1 + (0.01 + 0.0006)) = 9.499307342172967
-
-    Gate/Okx, Long
-    leverage = 5, open_rate = 10, amount = 1.0
-        (open_rate - (wallet_balance / position)) / (1 - (mm_ratio + taker_fee_rate))
-        (10 - (2 / 1)) / (1 - (0.01 + 0.0006)) = 8.085708510208207
-    leverage = 5, open_rate = 10, amount = 2.0
-        (10 - (4 / 2.0)) / (1 + (0.01 + 0.0006)) = 7.916089451810806
-    leverage = 3, open_rate = 10, amount = 1.0
-        (10 - (3.333333333333333333 / 1.0)) / (1 - (0.01 + 0.0006)) = 6.738090425173506
-    leverage = 5, open_rate = 8, amount = 1.0
-        (8 - (1.6 / 1.0)) / (1 + (0.01 + 0.0006)) = 6.332871561448645
     """
     default_conf_usdt["liquidation_buffer"] = liquidation_buffer
     default_conf_usdt["trading_mode"] = trading_mode

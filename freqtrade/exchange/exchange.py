@@ -3497,13 +3497,6 @@ class Exchange:
         except ccxt.BaseError as e:
             raise OperationalException(f"Could not fetch trade data. Msg: {e}") from e
 
-    def _valid_trade_pagination_id(self, pair: str, from_id: str) -> bool:
-        """
-        Verify trade-pagination id is valid.
-        Workaround for odd Kraken issue where ID is sometimes wrong.
-        """
-        return True
-
     def _get_trade_pagination_next_value(self, trades: list[dict]):
         """
         Extract pagination id for the next "from_id" value
@@ -3544,7 +3537,7 @@ class Exchange:
         # Skip last trade by default since its the key for the next call
         x = slice(None, -1) if has_overlap else slice(None)
 
-        if not from_id or not self._valid_trade_pagination_id(pair, from_id):
+        if not from_id:
             # Fetch first elements using timebased method to get an ID to paginate on
             # Depending on the Exchange, this can introduce a drift at the start of the interval
             # of up to an hour.
