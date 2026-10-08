@@ -67,6 +67,3 @@ scikit-learn==1.9.1
 filelock==4.0.1
 optuna==5.0.0
 cmaes==0.13.1
-
-# Plotting (plot-dataframe / plot-profit) - remove together with the plot module
-plotly==7.1.0

@@ -18,7 +18,7 @@ freqtrade/  (repo)
 │                       #   binance_update_lev_tiers.py (bảng đòn bẩy), rest/ws client mẫu
 ├── .gitattributes, .editorconfig, .pre-commit-config.yaml   # Chuẩn file text + git hook
 ├── Dockerfile, docker-compose.yml   # Đóng gói & chạy bằng Docker (triển khai VPS)
-├── requirements.txt    # Toàn bộ thư viện để chạy bot (gồm hyperopt, plot)
+├── requirements.txt    # Toàn bộ thư viện để chạy bot (gồm hyperopt)
 ├── requirements-dev.txt # Công cụ phát triển: pytest, ruff, mypy, pre-commit (gồm requirements.txt)
 ├── pyproject.toml      # Build + cấu hình ruff / mypy / pytest / codespell
 ├── run.ps1             # Launcher Windows riêng của dự án (ui/trade/backtest/hyperopt/download)
@@ -94,7 +94,6 @@ FreqtradeException
 | build_config_commands.py | `start_new_config`, `start_show_config` | `new-config`, `show-config` |
 | analyze_commands.py | `start_analysis_entries_exits` | `backtesting-analysis` |
 | pairlist_commands.py | `start_test_pairlist` | `test-pairlist` |
-| plot_commands.py | `start_plot_dataframe`, `start_plot_profit` | `plot-dataframe`, `plot-profit` |
 | db_commands.py | `start_convert_db` | `convert-db` |
 | webserver_commands.py | `start_webserver` | `webserver` |
 
@@ -274,7 +273,6 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 | [resolvers/](../freqtrade/resolvers/) | Nạp class theo tên: strategy (kèm ghi đè thuộc tính từ config), exchange, pairlist, protection, hyperopt loss |
 | [enums/](../freqtrade/enums/) | `State`, `RunMode`, `ExitType`, `ExitCheckTuple`, `SignalType`/`SignalTagType`/`SignalDirection`, `TradingMode`, `MarginMode`, `CandleType`, `PriceType`, `RPCMessageType`, `OrderTypeValues`, `BacktestState`, `HyperoptState`, `MarketStateType` |
 | [leverage/](../freqtrade/leverage/) | Lãi vay margin (interest.py), giá thanh lý (liquidation_price.py) |
-| [plot/](../freqtrade/plot/) | Vẽ biểu đồ plotly (`plot-dataframe`, `plot-profit`) |
 | [util/](../freqtrade/util/) | ft_scheduler (lịch chạy định kỳ), datetime_helpers, ft_precise, measure_time, periodic_cache, ft_ttlcache, dry_run_wallet, formatters, rich_tables/progress, coin_gecko, template_renderer, migrations/ |
 | [loggers/](../freqtrade/loggers/) | Cấu hình logging (rich, json, buffer cho API `/logs`) |
 | [mixins/](../freqtrade/mixins/) | `LoggingMixin` (`log_once`) |
@@ -318,7 +316,7 @@ user_data/
 ├── backtest_results/        # Kết quả backtest (.zip)
 ├── hyperopt_results/        # Kết quả hyperopt (.fthypt)
 ├── hyperopts/               # Hàm loss tùy chỉnh
-├── notebooks/, plot/, logs/
+├── logs/
 └── CLAUDE.md
 ```
 > Toàn bộ `user_data/*` nằm trong `.gitignore` (chỉ giữ `.gitkeep`) → strategy/config không vào git trừ khi thêm ngoại lệ.

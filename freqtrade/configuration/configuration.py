@@ -393,15 +393,9 @@ class Configuration:
     def _process_plot_options(self, config: Config) -> None:
         configurations = [
             ("pairs", "Using pairs {}"),
-            ("indicators1", "Using indicators1: {}"),
-            ("indicators2", "Using indicators2: {}"),
             ("trade_ids", "Filtering on trade_ids: {}"),
-            ("plot_limit", "Limiting plot to: {}"),
-            ("plot_auto_open", "Parameter --auto-open detected."),
-            ("trade_source", "Using trades from: {}"),
             ("prepend_data", "Prepend detected. Allowing data prepending."),
             ("erase", "Erase detected. Deleting existing data."),
-            ("no_trades", "Parameter --no-trades detected."),
             ("timeframes", "timeframes --timeframes: {}"),
             ("days", "Detected --days: {}"),
             ("include_inactive", "Detected --include-inactive-pairs: {}"),

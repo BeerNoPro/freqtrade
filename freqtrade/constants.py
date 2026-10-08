@@ -116,7 +116,6 @@ FTHYPT_FILEVERSION = "fthypt_fileversion"
 
 USERPATH_HYPEROPTS = "hyperopts"
 USERPATH_STRATEGIES = "strategies"
-USERPATH_NOTEBOOKS = "notebooks"
 
 TELEGRAM_SETTING_OPTIONS = ["on", "off", "silent"]
 WEBHOOK_FORMAT_OPTIONS = ["form", "json", "raw"]
@@ -142,7 +141,6 @@ DUST_PER_COIN = {"BTC": 0.0001, "ETH": 0.01}
 USER_DATA_FILES = {
     "sample_strategy.py": USERPATH_STRATEGIES,
     "sample_hyperopt_loss.py": USERPATH_HYPEROPTS,
-    "strategy_analysis_example.ipynb": USERPATH_NOTEBOOKS,
 }
 
 SUPPORTED_FIAT = [

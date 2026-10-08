@@ -180,31 +180,6 @@ ARGS_DOWNLOAD_DATA = [
     "prepend_data",
 ]
 
-ARGS_PLOT_DATAFRAME = [
-    "pairs",
-    "indicators1",
-    "indicators2",
-    "plot_limit",
-    "db_url",
-    "trade_source",
-    "export",
-    "exportfilename",
-    "timerange",
-    "timeframe",
-    "no_trades",
-]
-
-ARGS_PLOT_PROFIT = [
-    "pairs",
-    "timerange",
-    "export",
-    "exportfilename",
-    "db_url",
-    "trade_source",
-    "timeframe",
-    "plot_auto_open",
-]
-
 ARGS_CONVERT_DB = ["db_url", "db_url_from"]
 
 ARGS_INSTALL_UI = ["erase_ui_only", "ui_prerelease", "ui_version"]
@@ -285,8 +260,6 @@ NO_CONF_REQURIED = [
     "list-pairs",
     "list-strategies",
     "list-timeframes",
-    "plot-dataframe",
-    "plot-profit",
     "show-trades",
     "install-ui",
     "trades-to-ohlcv",
@@ -396,8 +369,6 @@ class Arguments:
             start_lookahead_analysis,
             start_new_config,
             start_new_strategy,
-            start_plot_dataframe,
-            start_plot_profit,
             start_recursive_analysis,
             start_show_config,
             start_show_trades,
@@ -642,24 +613,6 @@ class Arguments:
         )
         install_ui_cmd.set_defaults(func=start_install_ui)
         self._build_args(optionlist=ARGS_INSTALL_UI, parser=install_ui_cmd)
-
-        # Add Plotting subcommand
-        plot_dataframe_cmd = subparsers.add_parser(
-            "plot-dataframe",
-            help="Plot candles with indicators.",
-            parents=[_common_parser, _strategy_parser],
-        )
-        plot_dataframe_cmd.set_defaults(func=start_plot_dataframe)
-        self._build_args(optionlist=ARGS_PLOT_DATAFRAME, parser=plot_dataframe_cmd)
-
-        # Plot profit
-        plot_profit_cmd = subparsers.add_parser(
-            "plot-profit",
-            help="Generate plot showing profits.",
-            parents=[_common_parser, _strategy_parser],
-        )
-        plot_profit_cmd.set_defaults(func=start_plot_profit)
-        self._build_args(optionlist=ARGS_PLOT_PROFIT, parser=plot_profit_cmd)
 
         # Add webserver subcommand
         webserver_cmd = subparsers.add_parser(

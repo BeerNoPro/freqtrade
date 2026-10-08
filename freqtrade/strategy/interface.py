@@ -1697,7 +1697,7 @@ class IStrategy(ABC, HyperStrategyMixin):
 
     def ft_plot_annotations(self, pair: str, dataframe: DataFrame) -> list[AnnotationType]:
         """
-        Internal wrapper around plot_dataframe
+        Internal wrapper around plot_annotations (chart annotations served to FreqUI)
         """
         if len(dataframe) > 0:
             annotations = strategy_safe_wrapper(self.plot_annotations)(

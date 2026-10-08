@@ -170,7 +170,6 @@ def _validate_whitelist(conf: dict[str, Any]) -> None:
     """
     if conf.get("runmode", RunMode.OTHER) in [
         RunMode.OTHER,
-        RunMode.PLOT,
         RunMode.UTIL_NO_EXCHANGE,
         RunMode.UTIL_EXCHANGE,
     ]:

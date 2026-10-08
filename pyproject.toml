@@ -80,8 +80,6 @@ dependencies = [
   "filelock",
   "optuna > 4.0.0",
   "scikit-learn",
-  # plotting (remove together with the plot module)
-  "plotly>=4.0",
 ]
 
 [project.optional-dependencies]

@@ -444,7 +444,7 @@ Khi `position_adjustment_enable = True`, mỗi vòng `process_open_trade_positio
 | `custom_exit_price()` | Thoát bằng lệnh limit | |
 | `confirm_trade_exit()` | Ngay trước khi đặt lệnh thoát | Không gọi cho thanh lý / thoát một phần |
 | `adjust_trade_position()` | Mỗi vòng khi `position_adjustment_enable` | DCA / thoát một phần |
-| `plot_annotations()` | API `/pair_candles`, plot | Vẽ chú thích |
+| `plot_annotations()` | API `/pair_candles`, `/pair_history` (FreqUI) | Chú thích trên biểu đồ FreqUI |
 | `version()` | Log heartbeat | |
 
 FreqAI đã bị gỡ hoàn toàn (kể cả các hook `feature_engineering_*`, `set_freqai_targets`): config còn bật
