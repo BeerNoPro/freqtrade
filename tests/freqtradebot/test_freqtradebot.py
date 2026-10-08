@@ -143,10 +143,7 @@ def test_bot_cleanup_db_errors(mocker, default_conf_usdt, caplog, monkeypatch) -
         side_effect=OperationalException(),
     )
     freqtrade = get_patched_freqtradebot(mocker, default_conf_usdt)
-    freqtrade.emc = MagicMock()
-    freqtrade.emc.shutdown = MagicMock()
     freqtrade.cleanup()
-    assert freqtrade.emc.shutdown.call_count == 1
     assert check_mock.call_count == 1
     assert log_has_re(r"Exception during cleanup: OperationalException.*", caplog)
 
@@ -882,22 +879,10 @@ def test_process_informative_pairs_added(default_conf_usdt, ticker_usdt, mocker)
     [
         (False, "spot", "binance", None, 0.0, None),
         (True, "spot", "binance", None, 0.0, None),
-        (False, "spot", "gate", None, 0.0, None),
-        (True, "spot", "gate", None, 0.0, None),
-        (False, "spot", "okx", None, 0.0, None),
-        (True, "spot", "okx", None, 0.0, None),
         (True, "futures", "binance", "isolated", 0.0, 11.88151815181518),
         (False, "futures", "binance", "isolated", 0.0, 8.080471380471382),
-        (True, "futures", "gate", "isolated", 0.0, 11.87413417771621),
-        (False, "futures", "gate", "isolated", 0.0, 8.085708510208207),
         (True, "futures", "binance", "isolated", 0.05, 11.7874422442244),
         (False, "futures", "binance", "isolated", 0.05, 8.17644781144781),
-        (True, "futures", "gate", "isolated", 0.05, 11.7804274688304),
-        (False, "futures", "gate", "isolated", 0.05, 8.181423084697796),
-        (True, "futures", "okx", "isolated", 0.0, 11.87413417771621),
-        (False, "futures", "okx", "isolated", 0.0, 8.085708510208207),
-        (True, "futures", "bybit", "isolated", 0.0, 11.9),
-        (False, "futures", "bybit", "isolated", 0.0, 8.1),
     ],
 )
 def test_execute_entry(
@@ -923,14 +908,6 @@ def test_execute_entry(
     exchange_name = binance, is_short = false
         ((wb + cum_b) - (side_1 * position * ep1)) / ((position * mmr_b) - (side_1 * position))
         ((2 + 0.01) - (1 * 1 * 10)) / ((1 * 0.01) - (1 * 1)) = 8.070707070707071
-
-    exchange_name = gate/okx, is_short = true
-        (open_rate + (wallet_balance / position)) / (1 + (mm_ratio + taker_fee_rate))
-        (10 + (2 / 1)) / (1 + (0.01 + 0.0006)) = 11.87413417771621
-
-    exchange_name = gate/okx, is_short = false
-        (open_rate - (wallet_balance / position)) / (1 - (mm_ratio + taker_fee_rate))
-        (10 - (2 / 1)) / (1 - (0.01 + 0.0006)) = 8.085708510208207
     """
     # TODO: Split this test into multiple tests to improve readability
     open_order = limit_order_open[entry_side(is_short)]
@@ -941,7 +918,6 @@ def test_execute_entry(
     default_conf_usdt["exchange"]["name"] = exchange_name
     if margin_mode:
         default_conf_usdt["margin_mode"] = margin_mode
-    mocker.patch("freqtrade.exchange.gate.Gate.validate_ordertypes")
     patch_RPCManager(mocker)
     patch_exchange(mocker, exchange=exchange_name)
     freqtrade = FreqtradeBot(default_conf_usdt)
@@ -963,10 +939,6 @@ def test_execute_entry(
         name=exchange_name,
         get_maintenance_ratio_and_amt=MagicMock(return_value=(0.01, 0.01)),
         get_max_leverage=MagicMock(return_value=10),
-    )
-    mocker.patch.multiple(
-        "freqtrade.exchange.okx.Okx",
-        get_max_pair_stake_amount=MagicMock(return_value=500000),
     )
     pair = "ETH/USDT"
 
@@ -2714,11 +2686,6 @@ def test_handle_cancel_enter(mocker, caplog, default_conf_usdt, limit_order, is_
 
 
 @pytest.mark.parametrize("is_short", [False, True])
-@pytest.mark.parametrize(
-    "limit_buy_order_canceled_empty",
-    ["binance", "kraken", "bybit"],
-    indirect=["limit_buy_order_canceled_empty"],
-)
 def test_handle_cancel_enter_exchanges(
     mocker, caplog, default_conf_usdt, is_short, fee, limit_buy_order_canceled_empty
 ) -> None:

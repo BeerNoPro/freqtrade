@@ -31,7 +31,7 @@ class TestCCXTExchange:
         assert exch.market_is_spot(markets[pair])
 
     def test_has_validations(self, exchange: EXCHANGE_FIXTURE_TYPE):
-        exch, exchangename, _ = exchange
+        exch, _, _ = exchange
 
         exch.validate_ordertypes(
             {
@@ -41,9 +41,6 @@ class TestCCXTExchange:
             }
         )
 
-        if exchangename == "gate":
-            # gate doesn't have market orders on spot
-            return
         exch.validate_ordertypes(
             {
                 "entry": "market",
@@ -180,8 +177,8 @@ class TestCCXTExchange:
             assert tickers[pair]["quoteVolume"] is not None
 
     def test_ccxt_fetch_tickers_futures(self, exchange_futures: EXCHANGE_FIXTURE_TYPE):
-        exch, exchangename, exchange_params = exchange_futures
-        if not exch or exchangename in ("gate"):
+        exch, _, exchange_params = exchange_futures
+        if not exch:
             # exchange_futures only returns values for supported exchanges
             return
 
@@ -213,7 +210,7 @@ class TestCCXTExchange:
             assert ticker["quoteVolume"] is not None
 
     def test_ccxt_fetch_l2_orderbook(self, exchange: EXCHANGE_FIXTURE_TYPE):
-        exch, exchangename, exchange_params = exchange
+        exch, _, exchange_params = exchange
         pair = exchange_params["pair"]
         l2 = exch.fetch_l2_order_book(pair)
         orderbook_max_entries = exchange_params.get("orderbook_max_entries")
@@ -223,9 +220,6 @@ class TestCCXTExchange:
         assert len(l2["bids"]) >= 1
         l2_limit_range = exch._ft_has["l2_limit_range"]
         l2_limit_range_required = exch._ft_has["l2_limit_range_required"]
-        if exchangename == "gate":
-            # TODO: Gate is unstable here at the moment, ignoring the limit partially.
-            return
         for val in [1, 2, 5, 25, 50, 100]:
             if orderbook_max_entries and val > orderbook_max_entries:
                 continue
@@ -298,9 +292,6 @@ class TestCCXTExchange:
         timeframe_ms_8h = timeframe_to_msecs("8h")
         now = timeframe_to_prev_date(timeframe, datetime.now(UTC))
         offset_attempts = (360, 120, 30, 10, 5, 2)
-        if candle_type == CandleType.FUNDING_RATE and exchange.id == "gate":
-            # gate only provides 180 days of funding fee history
-            offset_attempts = (179, 120, 30, 10, 5)
 
         for offset_days in offset_attempts:
             since = now - timedelta(days=offset_days)
@@ -518,7 +509,7 @@ class TestCCXTExchange:
         assert funding_fee != 0
 
     def test_ccxt__async_get_trade_history(self, exchange: EXCHANGE_FIXTURE_TYPE, mocker):
-        exch, exchangename, exchange_params = exchange
+        exch, _, exchange_params = exchange
         if not (lookback := exchange_params.get("trades_lookback_hours")):
             pytest.skip("test_fetch_trades not enabled for this exchange")
         pair = exchange_params["pair"]
@@ -532,13 +523,6 @@ class TestCCXTExchange:
         assert res_trades[0][0] >= since
         assert len(res_trades) > 1200
         assert nvspy.call_count > 5
-        if exchangename == "kraken":
-            # for Kraken, the pagination value is added to the last trade result by ccxt.
-            # We therefore expect that the last row has one additional field
-
-            # Pick a random spy call
-            trades_orig = nvspy.call_args_list[2][0][0]
-            assert len(trades_orig[-1].get("info")) > len(trades_orig[-2].get("info"))
 
     def _ccxt_get_fee(self, exch: Exchange, pair: str):
         threshold = 0.01
@@ -651,35 +635,3 @@ class TestCCXTExchange:
         exch, _, exchange_params = exchange
         for method in exchange_params.get("private_methods", []):
             assert hasattr(exch._api, method)
-
-    def test_ccxt_bitget_ohlcv_candle_limit(self, exchange: EXCHANGE_FIXTURE_TYPE):
-        exch, exchangename, _ = exchange
-        if exchangename != "bitget":
-            pytest.skip("This test is only for the Bitget exchange")
-
-        timeframes = ("1m", "5m", "1h")
-
-        for timeframe in timeframes:
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.SPOT) == 1000
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.FUTURES) == 1000
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.MARK) == 1000
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.FUNDING_RATE) == 200
-
-            start_time = dt_ts(dt_now() - timedelta(days=17))
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.SPOT, start_time) == 1000
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.FUTURES, start_time) == 1000
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.MARK, start_time) == 1000
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.FUNDING_RATE, start_time) == 200
-            start_time = dt_ts(dt_now() - timedelta(days=48))
-            length = 200 if timeframe in ("1m", "5m") else 1000
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.SPOT, start_time) == length
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.FUTURES, start_time) == length
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.MARK, start_time) == length
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.FUNDING_RATE, start_time) == 200
-
-            start_time = dt_ts(dt_now() - timedelta(days=61))
-            length = 200
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.SPOT, start_time) == length
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.FUTURES, start_time) == length
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.MARK, start_time) == length
-            assert exch.ohlcv_candle_limit(timeframe, CandleType.FUNDING_RATE, start_time) == 200

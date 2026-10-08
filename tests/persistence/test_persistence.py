@@ -193,24 +193,14 @@ def test_set_stop_loss_liquidation(fee):
         ("binance", True, 5, 295, 0.0005, 0.0, futures),
         ("binance", False, 1, 295, 0.0005, 0.0, futures),
         ("binance", True, 1, 295, 0.0005, 0.0, futures),
-        ("kraken", False, 3, 10, 0.0005, 0.040, margin),
-        ("kraken", True, 3, 10, 0.0005, 0.030, margin),
-        ("kraken", False, 3, 295, 0.0005, 0.06, margin),
-        ("kraken", True, 3, 295, 0.0005, 0.045, margin),
-        ("kraken", False, 3, 295, 0.00025, 0.03, margin),
-        ("kraken", True, 3, 295, 0.00025, 0.0225, margin),
-        ("kraken", False, 5, 295, 0.0005, round(0.07200000000000001, 8), margin),
-        ("kraken", True, 5, 295, 0.0005, 0.045, margin),
-        ("kraken", False, 1, 295, 0.0005, 0.0, spot),
-        ("kraken", True, 1, 295, 0.0005, 0.045, margin),
     ],
 )
 @pytest.mark.usefixtures("init_persistence")
 def test_interest(fee, exchange, is_short, lev, minutes, rate, interest, trading_mode):
     """
-    10min, 5hr limit trade on Binance/Kraken at 3x,5x leverage
+    10min, 5hr limit trade on Binance at 3x,5x leverage
     fee: 0.25 % quote
-    interest_rate: 0.05 % per 4 hrs
+    interest_rate: 0.05 % per day
     open_rate: 2.00 quote
     close_rate: 2.20 quote
     amount: = 30.0 crypto
@@ -228,36 +218,25 @@ def test_interest(fee, exchange, is_short, lev, minutes, rate, interest, trading
     hours: 1/6 (10 minutes)
     time-periods:
         10min
-            kraken: (1 + 1) 4hr_periods = 2 4hr_periods
             binance: 1/24 24hr_periods
         4.95hr
-            kraken: ceil(1 + 4.95/4) 4hr_periods = 3 4hr_periods
             binance: ceil(4.95)/24 24hr_periods = 5/24 24hr_periods
     interest: borrowed * interest_rate * time-periods
       10min
         binance     3x: 40 * 0.0005 * 1/24 = 0.0008333333333333334 quote
-        kraken      3x: 40 * 0.0005 * 2    = 0.040 quote
         binace     -3x: 30 * 0.0005 * 1/24 = 0.000625 crypto
-        kraken     -3x: 30 * 0.0005 * 2    = 0.030 crypto
       5hr
         binance     3x: 40 * 0.0005 * 5/24 = 0.004166666666666667 quote
-        kraken      3x: 40 * 0.0005 * 3    = 0.06 quote
         binace     -3x: 30 * 0.0005 * 5/24 = 0.0031249999999999997 crypto
-        kraken     -3x: 30 * 0.0005 * 3    = 0.045 crypto
       0.00025 interest
         binance     3x: 40 * 0.00025 * 5/24 = 0.0020833333333333333 quote
-        kraken      3x: 40 * 0.00025 * 3    = 0.03 quote
         binace     -3x: 30 * 0.00025 * 5/24 = 0.0015624999999999999 crypto
-        kraken     -3x: 30 * 0.00025 * 3    = 0.0225 crypto
       5x leverage, 0.0005 interest, 5hr
         binance     5x: 48 * 0.0005 * 5/24 = 0.005 quote
-        kraken      5x: 48 * 0.0005 * 3    = 0.07200000000000001 quote
         binace     -5x: 30 * 0.0005 * 5/24 = 0.0031249999999999997 crypto
-        kraken     -5x: 30 * 0.0005 * 3    = 0.045 crypto
       1x leverage, 0.0005 interest, 5hr
-        binance,kraken 1x: 0.0 quote
+        binance 1x: 0.0 quote
         binace        -1x: 30 * 0.0005 * 5/24 = 0.003125 crypto
-        kraken        -1x: 30 * 0.0005 * 3    = 0.045 crypto
     """
 
     trade = Trade(
@@ -290,9 +269,9 @@ def test_interest(fee, exchange, is_short, lev, minutes, rate, interest, trading
 @pytest.mark.usefixtures("init_persistence")
 def test_borrowed(fee, is_short, lev, borrowed, trading_mode):
     """
-    10 minute limit trade on Binance/Kraken at 1x, 3x leverage
+    10 minute limit trade on Binance at 1x, 3x leverage
     fee: 0.25% quote
-    interest_rate: 0.05% per 4 hrs
+    interest_rate: 0.05% per day
     open_rate: 2.00 quote
     close_rate: 2.20 quote
     amount: = 30.0 crypto
@@ -306,14 +285,11 @@ def test_borrowed(fee, is_short, lev, borrowed, trading_mode):
         -3x: 30 crypto
     hours: 1/6 (10 minutes)
     time-periods:
-        kraken: (1 + 1) 4hr_periods = 2 4hr_periods
         binance: 1/24 24hr_periods
     interest: borrowed * interest_rate * time-periods
         1x            :  /
         binance     3x: 40 * 0.0005 * 1/24 = 0.0008333333333333334 quote
-        kraken      3x: 40 * 0.0005 * 2 = 0.040 quote
         binace -1x,-3x: 30 * 0.0005 * 1/24 = 0.000625 crypto
-        kraken -1x,-3x: 30 * 0.0005 * 2 = 0.030 crypto
     open_value: (amount * open_rate) ± (amount * open_rate * fee)
          1x, 3x: 30 * 2 + 30 * 2 * 0.0025 = 60.15 quote
         -1x,-3x: 30 * 2 - 30 * 2 * 0.0025 = 59.850 quote
@@ -321,34 +297,25 @@ def test_borrowed(fee, is_short, lev, borrowed, trading_mode):
         1x, 3x         : amount
         -1x, -3x       : amount + interest
         binance -1x,-3x: 30 + 0.000625 = 30.000625 crypto
-        kraken  -1x,-3x: 30 + 0.03 = 30.03 crypto
     close_value:
          1x, 3x: (amount_closed * close_rate) - (amount_closed * close_rate * fee) - interest
         -1x,-3x: (amount_closed * close_rate) + (amount_closed * close_rate * fee)
-        binance,kraken 1x: (30.00 * 2.20) - (30.00 * 2.20 * 0.0025)         = 65.835
+        binance 1x: (30.00 * 2.20) - (30.00 * 2.20 * 0.0025)         = 65.835
         binance        3x: (30.00 * 2.20) - (30.00 * 2.20 * 0.0025) - 0.00083333 = 65.83416667
-        kraken         3x: (30.00 * 2.20) - (30.00 * 2.20 * 0.0025) - 0.040 = 65.795
         binance   -1x,-3x: (30.000625 * 2.20) + (30.000625 * 2.20 * 0.0025) = 66.16637843750001
-        kraken    -1x,-3x: (30.03 * 2.20) + (30.03 * 2.20 * 0.0025)         = 66.231165
     total_profit:
         1x, 3x : close_value - open_value
         -1x,-3x: open_value  - close_value
-        binance,kraken 1x: 65.835 - 60.15             = 5.685
+        binance 1x: 65.835 - 60.15             = 5.685
         binance        3x: 65.83416667 - 60.15        = 5.684166670000003
-        kraken         3x: 65.795 - 60.15             = 5.645
         binance   -1x,-3x: 59.850 - 66.16637843750001 = -6.316378437500013
-        kraken    -1x,-3x: 59.850 - 66.231165          = -6.381165
     total_profit_ratio:
         1x, 3x : ((close_value/open_value) - 1) * leverage
         -1x,-3x: (1 - (close_value/open_value)) * leverage
         binance  1x: ((65.835 / 60.15) - 1)  * 1 = 0.0945137157107232
         binance  3x: ((65.83416667 / 60.15) - 1)  * 3 = 0.2834995845386534
-        kraken   1x: ((65.835 / 60.15) - 1)  * 1 = 0.0945137157107232
-        kraken   3x: ((65.795 / 60.15) - 1)  * 3 = 0.2815461346633419
         binance -1x: (1-(66.1663784375 / 59.85)) * 1 = -0.1055368159983292
         binance -3x: (1-(66.1663784375 / 59.85)) * 3 = -0.3166104479949876
-        kraken  -1x: (1-(66.2311650 / 59.85)) * 1    = -0.106619298245614
-        kraken  -3x: (1-(66.2311650 / 59.85)) * 3    = -0.319857894736842
     """
 
     trade = Trade(
@@ -391,9 +358,9 @@ def test_update_limit_order(
     trading_mode,
 ):
     """
-    10 minute limit trade on Binance/Kraken at 1x, 3x leverage
+    10 minute limit trade on Binance at 1x, 3x leverage
     fee: 0.25% quote
-    interest_rate: 0.05% per 4 hrs
+    interest_rate: 0.05% per day
     open_rate: 2.00 quote
     close_rate: 2.20 quote
     amount: = 30.0 crypto
@@ -407,14 +374,11 @@ def test_update_limit_order(
         -3x: 30 crypto
     hours: 1/6 (10 minutes)
     time-periods:
-        kraken: (1 + 1) 4hr_periods = 2 4hr_periods
         binance: 1/24 24hr_periods
     interest: borrowed * interest_rate * time-periods
         1x            :  /
         binance     3x: 40 * 0.0005 * 1/24 = 0.0008333333333333334 quote
-        kraken      3x: 40 * 0.0005 * 2 = 0.040 quote
         binace -1x,-3x: 30 * 0.0005 * 1/24 = 0.000625 crypto
-        kraken -1x,-3x: 30 * 0.0005 * 2 = 0.030 crypto
     open_value: (amount * open_rate) ± (amount * open_rate * fee)
          1x, 3x: 30 * 2 + 30 * 2 * 0.0025 = 60.15 quote
         -1x,-3x: 30 * 2 - 30 * 2 * 0.0025 = 59.850 quote
@@ -422,34 +386,25 @@ def test_update_limit_order(
         1x, 3x         : amount
         -1x, -3x       : amount + interest
         binance -1x,-3x: 30 + 0.000625 = 30.000625 crypto
-        kraken  -1x,-3x: 30 + 0.03 = 30.03 crypto
     close_value:
          1x, 3x: (amount_closed * close_rate) - (amount_closed * close_rate * fee) - interest
         -1x,-3x: (amount_closed * close_rate) + (amount_closed * close_rate * fee)
-        binance,kraken 1x: (30.00 * 2.20) - (30.00 * 2.20 * 0.0025)         = 65.835
+        binance 1x: (30.00 * 2.20) - (30.00 * 2.20 * 0.0025)         = 65.835
         binance        3x: (30.00 * 2.20) - (30.00 * 2.20 * 0.0025) - 0.00083333 = 65.83416667
-        kraken         3x: (30.00 * 2.20) - (30.00 * 2.20 * 0.0025) - 0.040 = 65.795
         binance   -1x,-3x: (30.000625 * 2.20) + (30.000625 * 2.20 * 0.0025) = 66.16637843750001
-        kraken    -1x,-3x: (30.03 * 2.20) + (30.03 * 2.20 * 0.0025)         = 66.231165
     total_profit:
         1x, 3x : close_value - open_value
         -1x,-3x: open_value  - close_value
-        binance,kraken 1x: 65.835 - 60.15             = 5.685
+        binance 1x: 65.835 - 60.15             = 5.685
         binance        3x: 65.83416667 - 60.15        = 5.684166670000003
-        kraken         3x: 65.795 - 60.15             = 5.645
         binance   -1x,-3x: 59.850 - 66.16637843750001 = -6.316378437500013
-        kraken    -1x,-3x: 59.850 - 66.231165          = -6.381165
     total_profit_ratio:
         1x, 3x : ((close_value/open_value) - 1) * leverage
         -1x,-3x: (1 - (close_value/open_value)) * leverage
         binance  1x: ((65.835 / 60.15) - 1)  * 1 = 0.0945137157107232
         binance  3x: ((65.83416667 / 60.15) - 1)  * 3 = 0.2834995845386534
-        kraken   1x: ((65.835 / 60.15) - 1)  * 1 = 0.0945137157107232
-        kraken   3x: ((65.795 / 60.15) - 1)  * 3 = 0.2815461346633419
         binance -1x: (1-(66.1663784375 / 59.85)) * 1 = -0.1055368159983292
         binance -3x: (1-(66.1663784375 / 59.85)) * 3 = -0.3166104479949876
-        kraken  -1x: (1-(66.2311650 / 59.85)) * 1    = -0.106619298245614
-        kraken  -3x: (1-(66.2311650 / 59.85)) * 3    = -0.319857894736842
     open_rate: 2.2, close_rate: 2.0, -3x, binance, short
         open_value: 30 * 2.2 - 30 * 2.2 * 0.0025 = 65.835 quote
         amount_closed: 30 + 0.000625 = 30.000625 crypto
@@ -574,10 +529,6 @@ def test_update_market_order(market_buy_order_usdt, market_sell_order_usdt, fee,
         ("binance", True, 1, 65.835, 60.151253125, 5.68374687, 0.08633321, margin, 0.0),
         ("binance", False, 3, 60.15, 65.83416667, 5.68416667, 0.28349958, margin, 0.0),
         ("binance", True, 3, 65.835, 60.151253125, 5.68374687, 0.25899963, margin, 0.0),
-        ("kraken", False, 1, 60.15, 65.835, 5.685, 0.09451371, spot, 0.0),
-        ("kraken", True, 1, 65.835, 60.21015, 5.62485, 0.0854386, margin, 0.0),
-        ("kraken", False, 3, 60.15, 65.795, 5.645, 0.28154613, margin, 0.0),
-        ("kraken", True, 3, 65.835, 60.21015, 5.62485, 0.25631579, margin, 0.0),
         ("binance", False, 1, 60.15, 65.835, 5.685, 0.09451371, futures, 0.0),
         ("binance", False, 1, 60.15, 66.835, 6.685, 0.11113881, futures, 1.0),
         ("binance", True, 1, 65.835, 60.15, 5.685, 0.08635224, futures, 0.0),
@@ -780,7 +731,6 @@ def test_update_invalid_order(limit_buy_order_usdt):
         trade.update_trade(oobj)
 
 
-@pytest.mark.parametrize("exchange", ["binance", "kraken"])
 @pytest.mark.parametrize("trading_mode", [spot, margin, futures])
 @pytest.mark.parametrize("lev", [1, 3])
 @pytest.mark.parametrize(
@@ -793,10 +743,8 @@ def test_update_invalid_order(limit_buy_order_usdt):
     ],
 )
 @pytest.mark.usefixtures("init_persistence")
-def test_calc_open_trade_value(
-    limit_buy_order_usdt, exchange, lev, is_short, fee_rate, result, trading_mode
-):
-    # 10 minute limit trade on Binance/Kraken at 1x, 3x leverage
+def test_calc_open_trade_value(limit_buy_order_usdt, lev, is_short, fee_rate, result, trading_mode):
+    # 10 minute limit trade on Binance at 1x, 3x leverage
     # fee: 0.25 %, 0.3% quote
     # open_rate: 2.00 quote
     # amount: = 30.0 crypto
@@ -818,7 +766,7 @@ def test_calc_open_trade_value(
         open_date=datetime.now(tz=UTC) - timedelta(minutes=10),
         fee_open=fee_rate,
         fee_close=fee_rate,
-        exchange=exchange,
+        exchange="binance",
         leverage=lev,
         is_short=is_short,
         trading_mode=trading_mode,
@@ -844,13 +792,7 @@ def test_calc_open_trade_value(
         ("binance", True, 3, 2.2, 2.5, 0.003, 75.22656719, margin, 0),
         ("binance", True, 1, 2.2, 2.5, 0.0025, 75.18906641, margin, 0),
         ("binance", True, 1, 2.2, 2.5, 0.003, 75.22656719, margin, 0),
-        # Kraken
-        ("kraken", False, 3, 2.0, 2.5, 0.0025, 74.7725, margin, 0),
-        ("kraken", False, 3, 2.0, 2.5, 0.003, 74.735, margin, 0),
-        ("kraken", True, 3, 2.2, 2.5, 0.0025, 75.2626875, margin, 0),
-        ("kraken", True, 3, 2.2, 2.5, 0.003, 75.300225, margin, 0),
-        ("kraken", True, 1, 2.2, 2.5, 0.0025, 75.2626875, margin, 0),
-        ("kraken", True, 1, 2.2, 2.5, 0.003, 75.300225, margin, 0),
+        # Futures, with funding fees
         ("binance", False, 1, 2.0, 2.5, 0.0025, 75.8125, futures, 1),
         ("binance", False, 3, 2.0, 2.5, 0.0025, 73.8125, futures, -1),
         ("binance", True, 3, 2.0, 2.5, 0.0025, 74.1875, futures, 1),
@@ -894,19 +836,7 @@ def test_calc_close_trade_price(
         ("binance", False, 3, 2.2, 0.0025, 17.0525, 0.28349958, margin, 0),
         ("binance", True, 1, 2.2, 0.0025, -6.3163784, -0.10553681, margin, 0),
         ("binance", True, 3, 2.2, 0.0025, -18.94913, -0.31661044, margin, 0),
-        # Kraken
-        ("kraken", False, 1, 2.1, 0.0025, 2.6925, 0.044763092, spot, 0),
-        ("kraken", False, 3, 2.1, 0.0025, 7.9575, 0.132294264, margin, 0),
-        ("kraken", True, 1, 2.1, 0.0025, -3.3706575, -0.056318421, margin, 0),
-        ("kraken", True, 3, 2.1, 0.0025, -10.1119725, -0.168955263, margin, 0),
-        ("kraken", False, 1, 1.9, 0.0025, -3.2925, -0.054738154, margin, 0),
-        ("kraken", False, 3, 1.9, 0.0025, -9.9975, -0.166209476, margin, 0),
-        ("kraken", True, 1, 1.9, 0.0025, 2.6503575, 0.044283333, margin, 0),
-        ("kraken", True, 3, 1.9, 0.0025, 7.9510725, 0.132850000, margin, 0),
-        ("kraken", False, 1, 2.2, 0.0025, 5.685, 0.09451371, margin, 0),
-        ("kraken", False, 3, 2.2, 0.0025, 16.935, 0.28154613, margin, 0),
-        ("kraken", True, 1, 2.2, 0.0025, -6.381165, -0.1066192, margin, 0),
-        ("kraken", True, 3, 2.2, 0.0025, -19.143495, -0.3198578, margin, 0),
+        # Spot, 0.3% fee
         ("binance", False, 1, 2.1, 0.003, 2.66100000, 0.044239401, spot, 0),
         ("binance", False, 1, 1.9, 0.003, -3.3209999, -0.055211970, spot, 0),
         ("binance", False, 1, 2.2, 0.003, 5.6520000, 0.093965087, spot, 0),
@@ -952,12 +882,12 @@ def test_calc_profit(
     exchange, is_short, lev, close_rate, fee_close, profit, profit_ratio, trading_mode, funding_fees
 ):
     """
-    10 minute limit trade on Binance/Kraken at 1x, 3x leverage
+    10 minute limit trade on Binance at 1x, 3x leverage
     arguments:
         fee:
             0.25% quote
             0.30% quote
-        interest_rate: 0.05% per 4 hrs
+        interest_rate: 0.05% per day
         open_rate: 2.0 quote
         close_rate:
             1.9 quote
@@ -975,14 +905,11 @@ def test_calc_profit(
         -1x: 30 crypto
         -3x: 30 crypto
     time-periods:
-        kraken: (1 + 1) 4hr_periods = 2 4hr_periods
         binance: 1/24 24hr_periods
     interest: borrowed * interest_rate * time-periods
         1x            :  /
         binance     3x: 40 * 0.0005 * 1/24 = 0.0008333333333333334 quote
-        kraken      3x: 40 * 0.0005 * 2    = 0.040 quote
         binace -1x,-3x: 30 * 0.0005 * 1/24 = 0.000625 crypto
-        kraken -1x,-3x: 30 * 0.0005 * 2    = 0.030 crypto
     open_value: (amount * open_rate) ± (amount * open_rate * fee)
       0.0025 fee
          1x, 3x: 30 * 2 + 30 * 2 * 0.0025 = 60.15 quote
@@ -992,7 +919,6 @@ def test_calc_profit(
         1x, 3x                         = amount
         -1x, -3x                       = amount + interest
         binance -1x,-3x: 30 + 0.000625 = 30.000625 crypto
-        kraken  -1x,-3x: 30 + 0.03     = 30.03 crypto
     close_value:
         equations:
             1x, 3x: (amount_closed * close_rate) - (amount_closed * close_rate * fee) - interest
@@ -1020,51 +946,36 @@ def test_calc_profit(
             1x, 3x : close_value - open_value
             -1x,-3x: open_value - close_value
         2.1 quote
-            binance,kraken 1x: 62.8425     - 60.15          = 2.6925
+            binance 1x: 62.8425     - 60.15          = 2.6925
             binance        3x: 62.84166667 - 60.15          = 2.69166667
-            kraken         3x: 62.8025     - 60.15          = 2.6525
             binance   -1x,-3x: 59.850      - 63.15881578125 = -3.308815781249997
-            kraken    -1x,-3x: 59.850      - 63.2206575     = -3.3706575
         1.9 quote
-            binance,kraken 1x: 56.8575     - 60.15          = -3.2925
+            binance 1x: 56.8575     - 60.15          = -3.2925
             binance        3x: 56.85666667 - 60.15          = -3.29333333
-            kraken         3x: 56.8175     - 60.15          = -3.3325
             binance   -1x,-3x: 59.850      - 57.14369046875 = 2.7063095312499996
-            kraken    -1x,-3x: 59.850      - 57.1996425     = 2.6503575
         2.2 quote
-            binance,kraken 1x: 65.835      - 60.15          = 5.685
+            binance 1x: 65.835      - 60.15          = 5.685
             binance        3x: 65.83416667 - 60.15          = 5.68416667
-            kraken         3x: 65.795      - 60.15          = 5.645
             binance   -1x,-3x: 59.850      - 66.1663784375  = -6.316378437499999
-            kraken    -1x,-3x: 59.850      - 66.231165      = -6.381165
     total_profit_ratio:
         equations:
             1x, 3x : ((close_value/open_value) - 1) * leverage
             -1x,-3x: (1 - (close_value/open_value)) * leverage
         2.1 quote
-            binance,kraken 1x: (62.8425 / 60.15) - 1             = 0.04476309226932673
+            binance 1x: (62.8425 / 60.15) - 1             = 0.04476309226932673
             binance        3x: ((62.84166667 / 60.15) - 1)*3     = 0.13424771421446402
-            kraken         3x: ((62.8025 / 60.15) - 1)*3         = 0.13229426433915248
             binance       -1x: 1 - (63.15881578125 / 59.850)     = -0.05528514254385963
             binance       -3x: (1 - (63.15881578125 / 59.850))*3 = -0.1658554276315789
-            kraken        -1x: 1 - (63.2206575 / 59.850)         = -0.05631842105263152
-            kraken        -3x: (1 - (63.2206575 / 59.850))*3     = -0.16895526315789455
         1.9 quote
-            binance,kraken 1x: (56.8575 / 60.15) - 1             = -0.05473815461346632
+            binance 1x: (56.8575 / 60.15) - 1             = -0.05473815461346632
             binance        3x: ((56.85666667 / 60.15) - 1)*3     = -0.16425602643391513
-            kraken         3x: ((56.8175 / 60.15) - 1)*3         = -0.16620947630922667
             binance       -1x: 1 - (57.14369046875 / 59.850)     = 0.045218204365079395
             binance       -3x: (1 - (57.14369046875 / 59.850))*3 = 0.13565461309523819
-            kraken        -1x: 1 - (57.1996425 / 59.850)         = 0.04428333333333334
-            kraken        -3x: (1 - (57.1996425 / 59.850))*3     = 0.13285000000000002
         2.2 quote
-            binance,kraken 1x: (65.835 / 60.15) - 1             = 0.0945137157107232
+            binance 1x: (65.835 / 60.15) - 1             = 0.0945137157107232
             binance        3x: ((65.83416667 / 60.15) - 1)*3     = 0.2834995845386534
-            kraken         3x: ((65.795 / 60.15) - 1)*3         = 0.2815461346633419
             binance       -1x: 1 - (66.1663784375 / 59.850)     = -0.1055368159983292
             binance       -3x: (1 - (66.1663784375 / 59.850))*3 = -0.3166104479949876
-            kraken        -1x: 1 - (66.231165 / 59.850)         = -0.106619298245614
-            kraken        -3x: (1 - (66.231165 / 59.850))*3     = -0.319857894736842
     fee: 0.003, 1x
         close_value:
             2.1 quote: (30.00 * 2.1) - (30.00 * 2.1 * 0.003) = 62.811

@@ -455,7 +455,7 @@ def leverage_order_sell():
 
 def leverage_trade(fee):
     """
-    5 hour short limit trade on kraken
+    5 hour short limit trade (closed - profit values are fixed fixture data)
 
     Short trade
     fee: 0.25% base
@@ -467,7 +467,7 @@ def leverage_trade(fee):
     borrowed: 60.516  base
     leverage: 5
     hours: 5
-    interest: borrowed * interest_rate * ceil(1 + hours/4)
+    interest (4 hour periods): borrowed * interest_rate * ceil(1 + hours/4)
                 = 60.516 * 0.0005 * ceil(1 + 5/4) = 0.090774 base
     open_value: (amount * open_rate) + (amount * open_rate * fee)
         = (615.0 * 0.123) + (615.0 * 0.123 * 0.0025)
@@ -495,7 +495,7 @@ def leverage_trade(fee):
         close_rate=0.128,
         close_profit=0.1713156134055116,
         close_profit_abs=2.5983135000000175,
-        exchange="kraken",
+        exchange="binance",
         is_open=False,
         strategy="DefaultStrategy",
         timeframe=5,

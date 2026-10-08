@@ -66,42 +66,17 @@ dependencies = [
   "uvicorn",
   "psutil",
   "schedule",
-  "janus",
-  "ast-comments",
-  "aiofiles",
   "aiohttp",
   "cryptography",
   "sdnotify",
   "python-dateutil",
-  "pytz",
-  "packaging",
-  "freqtrade-client",
-]
-
-[project.optional-dependencies]
-# Requirements used for submodules
-plot = ["plotly>=4.0"]
-hyperopt = [
+  # hyperopt
   "cmaes",
   "filelock",
   "optuna > 4.0.0",
-  "scikit-learn",
 ]
-freqai = [
-  "datasieve>=0.1.5",
-  "joblib",
-  "lightgbm",
-  "scikit-learn",
-  "tensorboard",
-  "xgboost",
-]
-freqai_rl = [
-  "gymnasium",
-  "sb3-contrib; sys_platform != 'darwin' or platform_machine != 'x86_64'",
-  "stable-baselines3; sys_platform != 'darwin' or platform_machine != 'x86_64'",
-  "torch; sys_platform != 'darwin' or platform_machine != 'x86_64'",
-  "tqdm",
-]
+
+[project.optional-dependencies]
 develop = [
   "mypy",
   "pre-commit",
@@ -121,17 +96,8 @@ develop = [
   "types-requests",
   "types-tabulate",
 ]
-jupyter = [
-  "ipykernel",
-  "jupyter",
-  "nbconvert",
-  "nbstripout",
-]
-all = [
-  "freqtrade[plot,hyperopt,freqai,freqai_rl,jupyter]",
-]
 dev = [
-  "freqtrade[all,develop]",
+  "freqtrade[develop]",
 ]
 
 [project.urls]
@@ -174,10 +140,6 @@ filterwarnings = [
 ignore_missing_imports = true
 namespace_packages = false
 warn_unused_ignores = true
-exclude = [
-    '^build_helpers\.py$',
-    '^ft_client/build/.*$',
-]
 plugins = [
   "sqlalchemy.ext.mypy.plugin"
 ]
@@ -195,11 +157,9 @@ module = [
 disable_error_code = "attr-defined"
 
 [tool.pyright]
-include = ["freqtrade", "ft_client"]
+include = ["freqtrade"]
 exclude = [
   "**/__pycache__",
-  "build_helpers/*.py",
-  "ft_client/build/*",
   "build/*",
 ]
 ignore = ["freqtrade/vendor/**"]
@@ -287,9 +247,6 @@ extend-ignore = [
 
 
 [tool.ruff.lint.per-file-ignores]
-"freqtrade/freqai/**/*.py" = [
-  "S311",  # Standard pseudo-random generators are not suitable for cryptographic purposes
-]
 "tests/**.py" = [
   "S101",  # allow assert in tests
   "S104",  #  Possible binding to all interfaces
@@ -306,10 +263,6 @@ extend-ignore = [
   "RUF100",  # Allow unused noqa
 ]
 
-"ft_client/test_client/**.py" = [
-  "S101",  # allow assert in tests
-]
-
 [tool.ruff.lint.mccabe]
 max-complexity = 12
 
@@ -319,7 +272,6 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2
-known-first-party = ["freqtrade_client"]
 
 [tool.flake8]
 # Default from https://flake8.pycqa.org/en/latest/user/options.html#cmdoption-flake8-ignore

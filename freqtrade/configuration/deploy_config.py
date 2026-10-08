@@ -109,13 +109,6 @@ def ask_user_config() -> dict[str, Any]:
             "message": "Select exchange",
             "choices": [
                 "binance",
-                "binanceus",
-                "bingx",
-                "gate",
-                "htx",
-                "kraken",
-                "kucoin",
-                "okx",
                 Separator("------------------"),
                 "other",
             ],
@@ -126,7 +119,7 @@ def ask_user_config() -> dict[str, Any]:
             "message": "Do you want to trade Perpetual Swaps (perpetual futures)?",
             "default": False,
             "filter": lambda val: "futures" if val else "spot",
-            "when": lambda x: x["exchange_name"] in ["binance", "gate", "okx", "bybit"],
+            "when": lambda x: x["exchange_name"] == "binance",
         },
         {
             "type": "autocomplete",
@@ -146,12 +139,6 @@ def ask_user_config() -> dict[str, Any]:
             "name": "exchange_secret",
             "message": "Insert Exchange Secret",
             "when": lambda x: not x["dry_run"],
-        },
-        {
-            "type": "password",
-            "name": "exchange_api_key_password",
-            "message": "Insert Exchange API Key password",
-            "when": lambda x: not x["dry_run"] and x["exchange_name"] in ("kucoin", "okx"),
         },
         {
             "type": "confirm",

@@ -165,8 +165,6 @@ async def api_start_backtest(
     btconfig["runmode"] = RunMode.BACKTEST
     remove_exchange_credentials(btconfig["exchange"], True)
     settings = dict(bt_settings)
-    if settings.get("freqai", None) is not None:
-        settings["freqai"] = dict(settings["freqai"])
     # Pydantic models will contain all keys, but non-provided ones are None
 
     btconfig = deep_merge_dicts(settings, btconfig, allow_null_overrides=False)

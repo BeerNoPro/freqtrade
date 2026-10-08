@@ -6,28 +6,9 @@ from functools import wraps
 from typing import Any, TypeVar, cast, overload
 
 from freqtrade.exceptions import DDosProtection, RetryableOrderError, TemporaryError
-from freqtrade.mixins import LoggingMixin
 
 
 logger = logging.getLogger(__name__)
-__logging_mixin = None
-
-
-def _reset_logging_mixin():
-    """
-    Reset global logging mixin - used in tests only.
-    """
-    global __logging_mixin
-    __logging_mixin = LoggingMixin(logger)
-
-
-def _get_logging_mixin():
-    # Logging-mixin to cache kucoin responses
-    # Only to be used in retrier
-    global __logging_mixin
-    if not __logging_mixin:
-        __logging_mixin = LoggingMixin(logger)
-    return __logging_mixin
 
 
 # Maximum default retry count.
@@ -43,28 +24,12 @@ BAD_EXCHANGES = {
     "binancecoinm": "Unsupported futures exchange",
 }
 
-MAP_EXCHANGE_CHILDCLASS = {
-    "gateio": "gate",
-    "huboi": "htx",
-    "kucoineu": "kucoin",
-}
+MAP_EXCHANGE_CHILDCLASS: dict[str, str] = {}
 
 SUPPORTED_EXCHANGES = [
     "binance",
     "binanceus",
     "binanceusdm",
-    "bingx",
-    "bitget",
-    "bybit",
-    "bybiteu",
-    "gate",
-    "gateeu",
-    "htx",
-    "hyperliquid",
-    "kraken",
-    "krakenfutures",
-    "okx",
-    "myokx",
 ]
 
 # either the main, or replacement methods (array) is required
@@ -123,7 +88,6 @@ def calculate_backoff(remaining_retries, max_retries):
 def retrier_async(f):
     async def wrapper(*args, **kwargs):
         count = kwargs.pop("count", API_RETRY_COUNT)
-        kucoin = args[0].name == "KuCoin"  # Check if the exchange is KuCoin.
         try:
             return await f(*args, **kwargs)
         except TemporaryError as ex:
@@ -133,22 +97,10 @@ def retrier_async(f):
                 count -= 1
                 kwargs["count"] = count
                 if isinstance(ex, DDosProtection):
-                    if kucoin and "429000" in str(ex):
-                        # Temporary fix for 429000 error on kucoin
-                        # see https://github.com/freqtrade/freqtrade/issues/5700 for details.
-                        _get_logging_mixin().log_once(
-                            f"Kucoin 429 error, avoid triggering DDosProtection backoff delay. "
-                            f"{count} tries left before giving up",
-                            logmethod=logger.warning,
-                        )
-                        # Reset msg to avoid logging too many times.
-                        msg = ""
-                    else:
-                        backoff_delay = calculate_backoff(count + 1, API_RETRY_COUNT)
-                        logger.info(f"Applying DDosProtection backoff delay: {backoff_delay}")
-                        await asyncio.sleep(backoff_delay)
-                if msg:
-                    logger.warning(msg)
+                    backoff_delay = calculate_backoff(count + 1, API_RETRY_COUNT)
+                    logger.info(f"Applying DDosProtection backoff delay: {backoff_delay}")
+                    await asyncio.sleep(backoff_delay)
+                logger.warning(msg)
                 return await wrapper(*args, **kwargs)
             else:
                 logger.warning(msg + "Giving up.")

@@ -41,7 +41,7 @@ from tests.conftest import (
 
 @pytest.fixture(scope="function")
 def all_conf():
-    config_file = Path(__file__).parents[1] / "config_examples/config_full.example.json"
+    config_file = Path(__file__).parent / "testdata/config_full.example.json"
     conf = load_config_file(str(config_file))
     return conf
 
@@ -932,117 +932,18 @@ def test__validate_pricing_rules(default_conf, caplog) -> None:
         validate_config_consistency(conf)
 
 
-def test__validate_freqai_include_timeframes(default_conf, caplog) -> None:
+@pytest.mark.parametrize("preliminary", [True, False])
+def test_validate_freqai_removed(default_conf, preliminary) -> None:
     conf = deepcopy(default_conf)
-    conf.update(
-        {
-            "freqai": {
-                "enabled": True,
-                "feature_parameters": {
-                    "include_timeframes": ["1m", "5m"],
-                    "include_corr_pairlist": [],
-                },
-                "data_split_parameters": {},
-                "model_training_parameters": {},
-            }
-        }
-    )
-    with pytest.raises(OperationalException, match=r"Main timeframe of .*"):
-        validate_config_consistency(conf)
-    # Validation pass
-    conf.update({"timeframe": "1m"})
-    validate_config_consistency(conf)
+    # A disabled (or absent) freqai section is harmless.
+    conf["freqai"] = {"enabled": False, "identifier": "old-model"}
+    validate_config_consistency(conf, preliminary=preliminary)
 
-    # Ensure base timeframe is in include_timeframes
-    conf["freqai"]["feature_parameters"]["include_timeframes"] = ["5m", "15m"]
-    validate_config_consistency(conf)
-    assert conf["freqai"]["feature_parameters"]["include_timeframes"] == ["1m", "5m", "15m"]
-
-    conf.update({"analyze_per_epoch": True})
-    with pytest.raises(
-        OperationalException,
-        match=r"Using analyze-per-epoch .* not supported with a FreqAI strategy.",
-    ):
-        validate_config_consistency(conf)
-
-
-def test__validate_consumers(default_conf, caplog) -> None:
-    conf = deepcopy(default_conf)
-    conf.update({"external_message_consumer": {"enabled": True, "producers": []}})
-    with pytest.raises(
-        OperationalException, match=r"You must specify at least 1 Producer to connect to\."
-    ):
-        validate_config_consistency(conf)
-
-    conf = deepcopy(default_conf)
-    conf.update(
-        {
-            "external_message_consumer": {
-                "enabled": True,
-                "producers": [
-                    {
-                        "name": "default",
-                        "host": "127.0.0.1",
-                        "port": 8081,
-                        "ws_token": "secret_ws_t0ken.",
-                    },
-                    {
-                        "name": "default",
-                        "host": "127.0.0.1",
-                        "port": 8080,
-                        "ws_token": "secret_ws_t0ken.",
-                    },
-                ],
-            }
-        }
-    )
-    with pytest.raises(
-        OperationalException, match=r"Producer names must be unique\. Duplicate: default"
-    ):
-        validate_config_consistency(conf)
-
-    conf = deepcopy(default_conf)
-    conf.update(
-        {
-            "process_only_new_candles": True,
-            "external_message_consumer": {
-                "enabled": True,
-                "producers": [
-                    {
-                        "name": "default",
-                        "host": "127.0.0.1",
-                        "port": 8081,
-                        "ws_token": "secret_ws_t0ken.",
-                    }
-                ],
-            },
-        }
-    )
-    validate_config_consistency(conf)
-    assert log_has_re("To receive best performance with external data.*", caplog)
-
-
-def test__validate_orderflow(default_conf) -> None:
-    conf = deepcopy(default_conf)
-    conf["exchange"]["use_public_trades"] = True
-    with pytest.raises(
-        ConfigurationError,
-        match=r"Orderflow is a required configuration key when using public trades\.",
-    ):
-        validate_config_consistency(conf)
-
-    conf.update(
-        {
-            "orderflow": {
-                "scale": 0.5,
-                "stacked_imbalance_range": 3,
-                "imbalance_volume": 100,
-                "imbalance_ratio": 3,
-            }
-        }
-    )
-    # Should pass.
-    validate_config_consistency(conf)
+    conf["freqai"]["enabled"] = True
+    with pytest.raises(ConfigurationError, match=r"FreqAI has been removed from this build\."):
+        validate_config_consistency(conf, preliminary=preliminary)
+    # ConfigurationError is an OperationalException - the bot stops with a clear message.
+    assert issubclass(ConfigurationError, OperationalException)
 
 
 def test__validate_demo_trading(default_conf_usdt) -> None:
@@ -1511,84 +1412,6 @@ def test_flat_vars_to_nested_dict(caplog):
     assert not log_has("Loading variable 'NOT_RELEVANT'", caplog)
 
 
-def test_setup_hyperopt_freqai(mocker, default_conf) -> None:
-    patched_configuration_load_config_file(mocker, default_conf)
-    mocker.patch("freqtrade.configuration.configuration.create_datadir", lambda c, x: x)
-    mocker.patch(
-        "freqtrade.configuration.configuration.create_userdata_dir",
-        lambda x, *args, **kwargs: Path(x),
-    )
-    arglist = [
-        "hyperopt",
-        "--config",
-        "config.json",
-        "--strategy",
-        CURRENT_TEST_STRATEGY,
-        "--timerange",
-        "20220801-20220805",
-        "--freqaimodel",
-        "LightGBMRegressorMultiTarget",
-        "--analyze-per-epoch",
-    ]
-
-    args = Arguments(arglist).get_parsed_arg()
-
-    configuration = Configuration(args)
-    config = configuration.get_config()
-    config["freqai"] = {"enabled": True}
-    with pytest.raises(
-        OperationalException, match=r".*analyze-per-epoch parameter is not supported.*"
-    ):
-        validate_config_consistency(config)
-
-
-def test_setup_freqai_backtesting(mocker, default_conf) -> None:
-    patched_configuration_load_config_file(mocker, default_conf)
-    mocker.patch("freqtrade.configuration.configuration.create_datadir", lambda c, x: x)
-    mocker.patch(
-        "freqtrade.configuration.configuration.create_userdata_dir",
-        lambda x, *args, **kwargs: Path(x),
-    )
-    arglist = [
-        "backtesting",
-        "--config",
-        "config.json",
-        "--strategy",
-        CURRENT_TEST_STRATEGY,
-        "--timerange",
-        "20220801-20220805",
-        "--freqaimodel",
-        "LightGBMRegressorMultiTarget",
-        "--freqai-backtest-live-models",
-    ]
-
-    args = Arguments(arglist).get_parsed_arg()
-
-    configuration = Configuration(args)
-    config = configuration.get_config()
-    config["runmode"] = RunMode.BACKTEST
-
-    with pytest.raises(
-        OperationalException, match=r".*--freqai-backtest-live-models parameter is only.*"
-    ):
-        validate_config_consistency(config)
-
-    conf = deepcopy(config)
-    conf["freqai"] = {"enabled": True}
-    with pytest.raises(
-        OperationalException, match=r".* timerange parameter is not supported with .*"
-    ):
-        validate_config_consistency(conf)
-
-    conf["timerange"] = None
-    conf["freqai_backtest_live_models"] = False
-
-    with pytest.raises(
-        OperationalException, match=r".* pass --timerange if you intend to use FreqAI .*"
-    ):
-        validate_config_consistency(conf)
-
-
 def test_sanitize_config(default_conf_usdt):
     assert default_conf_usdt["exchange"]["api_key"] != "REDACTED"
     res = sanitize_config(default_conf_usdt)
@@ -1604,6 +1427,25 @@ def test_sanitize_config(default_conf_usdt):
     res = sanitize_config(default_conf_usdt, show_sensitive=True)
     assert res["exchange"]["api_key"] == default_conf_usdt["exchange"]["api_key"]
     assert res["exchange"]["secret"] == default_conf_usdt["exchange"]["secret"]
+
+
+def test_sanitize_config_api_server_secrets(default_conf_usdt):
+    # The JWT signing key and the websocket token grant API access - never print or store them.
+    default_conf_usdt["api_server"] = {
+        "enabled": True,
+        "username": "freqtrader",
+        "password": "SuperSecurePassword",
+        "jwt_secret_key": "somethingRandomSomethingRandom123",
+        "ws_token": ["token-a", "token-b"],
+    }
+    res = sanitize_config(default_conf_usdt)
+    assert res["api_server"]["password"] == "REDACTED"
+    assert res["api_server"]["jwt_secret_key"] == "REDACTED"
+    assert res["api_server"]["ws_token"] == "REDACTED"
+    assert res["api_server"]["username"] == "freqtrader"
+    # Original config is left untouched (the running bot still needs the values)
+    assert default_conf_usdt["api_server"]["jwt_secret_key"] == "somethingRandomSomethingRandom123"
+    assert default_conf_usdt["api_server"]["ws_token"] == ["token-a", "token-b"]
 
 
 def test_remove_exchange_credentials(default_conf) -> None:

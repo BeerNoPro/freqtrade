@@ -1,4 +1,5 @@
 # pragma pylint: disable=missing-docstring
+import importlib.util
 import json
 import logging
 import platform
@@ -227,8 +228,6 @@ def patch_exchange(
     mocker.patch(f"{EXMS}.name", PropertyMock(return_value=exchange.title()))
     mocker.patch(f"{EXMS}.precisionMode", PropertyMock(return_value=2))
     mocker.patch(f"{EXMS}.precision_mode_price", PropertyMock(return_value=2))
-    # Temporary patch ...
-    mocker.patch("freqtrade.exchange.bybit.Bybit.cache_leverage_tiers")
 
     if mock_markets:
         mocker.patch(f"{EXMS}._load_async_markets", return_value={})
@@ -237,9 +236,14 @@ def patch_exchange(
         mocker.patch(f"{EXMS}.markets", PropertyMock(return_value=mock_markets))
 
     if mock_supported_modes:
-        mocker.patch(
+        # Exchanges without a dedicated subclass use the generic Exchange class.
+        exchange_cls = (
             f"freqtrade.exchange.{exchange}.{exchange.capitalize()}"
-            "._supported_trading_mode_margin_pairs",
+            if importlib.util.find_spec(f"freqtrade.exchange.{exchange}")
+            else EXMS
+        )
+        mocker.patch(
+            f"{exchange_cls}._supported_trading_mode_margin_pairs",
             PropertyMock(
                 return_value=[
                     (TradingMode.SPOT, MarginMode.NONE),
@@ -297,8 +301,6 @@ def patch_freqtradebot(mocker, config) -> None:
     mocker.patch("freqtrade.freqtradebot.RPCManager._init", MagicMock())
     mocker.patch("freqtrade.freqtradebot.RPCManager.send_msg", MagicMock())
     patch_whitelist(mocker, config)
-    mocker.patch("freqtrade.freqtradebot.ExternalMessageConsumer")
-    mocker.patch("freqtrade.configuration.config_validation._validate_consumers")
 
 
 def get_patched_freqtradebot(mocker, config) -> FreqtradeBot:
@@ -493,37 +495,9 @@ def fixture_set_mp_start_method():
     set_mp_start_method()
 
 
-def is_arm(include_aarch64: bool = False) -> bool:
-    machine = platform.machine()
-    if include_aarch64:
-        return "aarch64" in machine or "arm" in machine
-    return "arm" in machine
-
-
 def is_mac() -> bool:
     machine = platform.system()
     return "Darwin" in machine
-
-
-@pytest.fixture(autouse=True)
-def patch_torch_initlogs(mocker) -> None:
-    if is_mac():
-        # Mock torch import completely
-        import sys
-        import types
-
-        module_name = "torch"
-        mocked_module = types.ModuleType(module_name)
-        # SciPy's array-API dispatch probes ``torch.Tensor`` to classify inputs;
-        # expose a dummy so scipy.stats stays importable/usable under the mock.
-        mocked_module.Tensor = type("Tensor", (), {})
-        sys.modules[module_name] = mocked_module
-    else:
-        try:
-            mocker.patch("torch._logging._init_logs")
-        except ModuleNotFoundError:
-            # Allow running limited tests to run without freqAI dependencies
-            pass
 
 
 @pytest.fixture(autouse=True)
@@ -536,8 +510,8 @@ def user_dir(mocker, tmp_path) -> Path:
 @pytest.fixture()
 def keep_log_config_loggers(mocker):
     # Mock the _handle_existing_loggers function to prevent it from disabling all loggers.
-    # This is necessary to keep all loggers active, and avoid random failures if
-    # this file is ran before the test_rest_client file.
+    # This is necessary to keep all loggers active, and avoid random failures in
+    # tests that run later in the same worker and rely on caplog.
     mocker.patch("logging.config._handle_existing_loggers")
 
 
@@ -1849,75 +1823,28 @@ def limit_buy_order_old_partial_canceled(limit_buy_order_old_partial):
 
 
 @pytest.fixture(scope="function")
-def limit_buy_order_canceled_empty(request):
-    # Indirect fixture
-    # Documentation:
-    # https://docs.pytest.org/en/latest/example/parametrize.html#apply-indirect-on-particular-arguments
-
-    exchange_name = request.param
-    if exchange_name == "kraken":
-        return {
-            "info": {},
-            "id": "AZNPFF-4AC4N-7MKTAT",
-            "clientOrderId": None,
-            "timestamp": dt_ts(dt_now() - timedelta(minutes=601)),
-            "datetime": (dt_now() - timedelta(minutes=601)).isoformat(),
-            "lastTradeTimestamp": None,
-            "status": "canceled",
-            "symbol": "LTC/USDT",
-            "type": "limit",
-            "side": "buy",
-            "price": 34.3225,
-            "cost": 0.0,
-            "amount": 0.55,
-            "filled": 0.0,
-            "average": 0.0,
-            "remaining": 0.55,
-            "fee": {"cost": 0.0, "rate": None, "currency": "USDT"},
-            "trades": [],
-        }
-    elif exchange_name == "binance":
-        return {
-            "info": {},
-            "id": "1234512345",
-            "clientOrderId": "alb1234123",
-            "timestamp": dt_ts(dt_now() - timedelta(minutes=601)),
-            "datetime": (dt_now() - timedelta(minutes=601)).isoformat(),
-            "lastTradeTimestamp": None,
-            "symbol": "LTC/USDT",
-            "type": "limit",
-            "side": "buy",
-            "price": 0.016804,
-            "amount": 0.55,
-            "cost": 0.0,
-            "average": None,
-            "filled": 0.0,
-            "remaining": 0.55,
-            "status": "canceled",
-            "fee": None,
-            "trades": None,
-        }
-    else:
-        return {
-            "info": {},
-            "id": "1234512345",
-            "clientOrderId": "alb1234123",
-            "timestamp": dt_ts(dt_now() - timedelta(minutes=601)),
-            "datetime": (dt_now() - timedelta(minutes=601)).isoformat(),
-            "lastTradeTimestamp": None,
-            "symbol": "LTC/USDT",
-            "type": "limit",
-            "side": "buy",
-            "price": 0.016804,
-            "amount": 0.55,
-            "cost": 0.0,
-            "average": None,
-            "filled": 0.0,
-            "remaining": 0.55,
-            "status": "canceled",
-            "fee": None,
-            "trades": None,
-        }
+def limit_buy_order_canceled_empty():
+    # Entry order that was canceled by the exchange without any fill
+    return {
+        "info": {},
+        "id": "1234512345",
+        "clientOrderId": "alb1234123",
+        "timestamp": dt_ts(dt_now() - timedelta(minutes=601)),
+        "datetime": (dt_now() - timedelta(minutes=601)).isoformat(),
+        "lastTradeTimestamp": None,
+        "symbol": "LTC/USDT",
+        "type": "limit",
+        "side": "buy",
+        "price": 0.016804,
+        "amount": 0.55,
+        "cost": 0.0,
+        "average": None,
+        "filled": 0.0,
+        "remaining": 0.55,
+        "status": "canceled",
+        "fee": None,
+        "trades": None,
+    }
 
 
 @pytest.fixture

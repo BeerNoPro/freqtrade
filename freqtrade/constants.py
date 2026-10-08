@@ -61,10 +61,7 @@ AVAILABLE_PAIRLISTS = [
     "StaticPairList",
     "VolumePairList",
     "PercentChangePairList",
-    "ProducerPairList",
     "RemotePairList",
-    "MarketCapPairList",
-    "CrossMarketPairList",
     "AgeFilter",
     "DelistFilter",
     "FullTradesFilter",
@@ -88,20 +85,6 @@ MATH_CLOSE_PREC = 1e-14  # Precision used for float comparisons
 # Don't modify sequence of DEFAULT_TRADES_COLUMNS
 # it has wide consequences for stored trades files
 DEFAULT_TRADES_COLUMNS = ["timestamp", "id", "type", "side", "price", "amount", "cost"]
-DEFAULT_ORDERFLOW_COLUMNS = ["level", "bid", "ask", "delta"]
-ORDERFLOW_ADDED_COLUMNS = [
-    "trades",
-    "orderflow",
-    "imbalances",
-    "stacked_imbalances_bid",
-    "stacked_imbalances_ask",
-    "max_delta",
-    "min_delta",
-    "bid",
-    "ask",
-    "delta",
-    "total_trades",
-]
 TRADES_DTYPES = {
     "timestamp": "int64",
     "id": "str",
@@ -119,12 +102,9 @@ FTHYPT_FILEVERSION = "fthypt_fileversion"
 
 USERPATH_HYPEROPTS = "hyperopts"
 USERPATH_STRATEGIES = "strategies"
-USERPATH_NOTEBOOKS = "notebooks"
-USERPATH_FREQAIMODELS = "freqaimodels"
 
 TELEGRAM_SETTING_OPTIONS = ["on", "off", "silent"]
 WEBHOOK_FORMAT_OPTIONS = ["form", "json", "raw"]
-FULL_DATAFRAME_THRESHOLD = 100
 CUSTOM_TAG_MAX_LENGTH = 255
 DL_DATA_TIMEFRAMES = ["1m", "5m"]
 
@@ -147,7 +127,6 @@ DUST_PER_COIN = {"BTC": 0.0001, "ETH": 0.01}
 USER_DATA_FILES = {
     "sample_strategy.py": USERPATH_STRATEGIES,
     "sample_hyperopt_loss.py": USERPATH_HYPEROPTS,
-    "strategy_analysis_example.ipynb": USERPATH_NOTEBOOKS,
 }
 
 SUPPORTED_FIAT = [
@@ -243,6 +222,3 @@ IntOrInf = float
 
 
 EntryExecuteMode = Literal["initial", "pos_adjust", "replace"]
-
-# Prefixes for low-priced coins like 1000PEPE/USDDT:USDT or KPEPE/USDC (hyperliquid)
-PairPrefixes = ["1000", "1000000", "1M", "K"]

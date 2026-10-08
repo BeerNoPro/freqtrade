@@ -16,13 +16,11 @@ from freqtrade.commands import (
     start_convert_trades,
     start_create_userdir,
     start_download_data,
-    start_edge,
     start_hyperopt_list,
     start_hyperopt_show,
     start_install_ui,
     start_list_data,
     start_list_exchanges,
-    start_list_freqAI_models,
     start_list_hyperopt_loss_functions,
     start_list_markets,
     start_list_strategies,
@@ -30,7 +28,6 @@ from freqtrade.commands import (
     start_new_strategy,
     start_show_config,
     start_show_trades,
-    start_strategy_update,
     start_test_pairlist,
     start_trading,
     start_webserver,
@@ -44,6 +41,7 @@ from freqtrade.commands.deploy_ui import (
 from freqtrade.configuration import setup_utils_configuration
 from freqtrade.enums import RunMode
 from freqtrade.exceptions import OperationalException
+from freqtrade.exchange import Exchange
 from freqtrade.persistence.models import init_db
 from freqtrade.persistence.pairlock_middleware import PairLocks
 from freqtrade.util import dt_utc
@@ -210,8 +208,8 @@ def test_list_exchanges(capsys):
     captured = capsys.readouterr()
     assert re.search(r"Exchanges available for Freqtrade.*", captured.out)
     assert re.search(r".*binance.*", captured.out)
-    assert re.search(r"\bkrakenfutures\b", captured.out)
-    assert not re.search(r"\bmyokx\b", captured.out)
+    assert re.search(r"\bbinanceusdm\b", captured.out)
+    assert not re.search(r"\bkrakenfutures\b", captured.out)
 
 
 def test_list_timeframes(mocker, capsys):
@@ -1071,6 +1069,11 @@ def test_download_data_trades(mocker):
         "freqtrade.data.history.history_utils.convert_trades_to_ohlcv", MagicMock(return_value=[])
     )
     patch_exchange(mocker)
+    # Simulate an exchange with trade history but no candle history.
+    mocker.patch.dict(
+        Exchange._ft_has_default,
+        {"ohlcv_has_history": False, "trades_has_history": True},
+    )
     mocker.patch(f"{EXMS}.get_markets", return_value={"ETH/BTC": {}, "XRP/BTC": {}})
     args = [
         "download-data",
@@ -1106,6 +1109,11 @@ def test_download_data_trades(mocker):
 
 def test_download_data_data_invalid(mocker):
     patch_exchange(mocker, exchange="kraken")
+    # Simulate an exchange without historic candle data (generic exchange class).
+    mocker.patch.dict(
+        Exchange._ft_has_default,
+        {"ohlcv_has_history": False, "trades_has_history": True},
+    )
     mocker.patch(f"{EXMS}.get_markets", return_value={"ETH/BTC": {}, "XRP/BTC": {}})
     args = [
         "download-data",
@@ -1228,30 +1236,6 @@ def test_start_list_hyperopt_loss_functions(capsys):
     assert "MaxDrawDownHyperOptLoss" in captured.out
     assert "SortinoHyperOptLossDaily" in captured.out
     assert "<builtin>/hyperopt_loss_sortino_daily.py" in captured.out
-
-
-def test_start_list_freqAI_models(capsys):
-    args = ["list-freqaimodels", "-1"]
-    pargs = get_args(args)
-    pargs["config"] = None
-    start_list_freqAI_models(pargs)
-    captured = capsys.readouterr()
-    assert "LightGBMClassifier" in captured.out
-    assert "LightGBMRegressor" in captured.out
-    assert "XGBoostRegressor" in captured.out
-    assert "<builtin>/LightGBMRegressor.py" not in captured.out
-
-    args = [
-        "list-freqaimodels",
-    ]
-    pargs = get_args(args)
-    pargs["config"] = None
-    start_list_freqAI_models(pargs)
-    captured = capsys.readouterr()
-    assert "LightGBMClassifier" in captured.out
-    assert "LightGBMRegressor" in captured.out
-    assert "XGBoostRegressor" in captured.out
-    assert "<builtin>/LightGBMRegressor.py" in captured.out
 
 
 def test_start_test_pairlist(mocker, caplog, tickers, default_conf, capsys):
@@ -2055,40 +2039,6 @@ def test_start_convert_db(fee, tmp_path):
     assert db_target_file.is_file()
 
 
-def test_start_strategy_updater(mocker, tmp_path):
-    sc_mock = mocker.patch("freqtrade.commands.strategy_utils_commands.start_conversion")
-    teststrats = Path(__file__).parent.parent / "strategy/strats"
-    args = [
-        "strategy-updater",
-        "--userdir",
-        str(tmp_path),
-        "--strategy-path",
-        str(teststrats),
-    ]
-    pargs = get_args(args)
-    pargs["config"] = None
-    start_strategy_update(pargs)
-    # Number of strategies in the test directory
-    assert sc_mock.call_count == 13
-
-    sc_mock.reset_mock()
-    args = [
-        "strategy-updater",
-        "--userdir",
-        str(tmp_path),
-        "--strategy-path",
-        str(teststrats),
-        "--strategy-list",
-        "StrategyTestV3",
-        "StrategyTestV2",
-    ]
-    pargs = get_args(args)
-    pargs["config"] = None
-    start_strategy_update(pargs)
-    # Number of strategies in the test directory
-    assert sc_mock.call_count == 2
-
-
 def test_start_show_config(capsys, caplog):
     args = [
         "show-config",
@@ -2117,17 +2067,3 @@ def test_start_show_config(capsys, caplog):
     assert '"max_open_trades":' in captured.out
     assert '"secret": "REDACTED"' not in captured.out
     assert log_has_re(r"Sensitive information will be shown in the upcoming output.*", caplog)
-
-
-def test_start_edge():
-    args = [
-        "edge",
-        "--config",
-        "tests/testdata/testconfigs/main_test_config.json",
-    ]
-
-    pargs = get_args(args)
-    with pytest.raises(
-        OperationalException, match=r"The Edge module has been deprecated in 2023\.9"
-    ):
-        start_edge(pargs)
