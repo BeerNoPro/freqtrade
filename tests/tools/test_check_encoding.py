@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 
-SCRIPT = Path(__file__).parents[1] / "scripts" / "check_encoding.py"
+SCRIPT = Path(__file__).parents[2] / "scripts" / "check_encoding.py"
 _spec = importlib.util.spec_from_file_location("check_encoding", SCRIPT)
 check_encoding = importlib.util.module_from_spec(_spec)
 sys.modules["check_encoding"] = check_encoding  # required by @dataclass during exec

@@ -43,7 +43,7 @@ def check_file(path: Path) -> list[str]:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
     except SyntaxError as e:
-        return [f"{path.relative_to(ROOT)}: syntax error {e}"]
+        return [f"{path.relative_to(ROOT).as_posix()}: syntax error {e}"]
     problems = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
