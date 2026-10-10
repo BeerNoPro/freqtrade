@@ -1,3 +1,12 @@
+---
+paths:
+  - "user_data/strategies/**"
+  - "user_data/hyperopts/**"
+  - "docs/signal-bot-workflow.md"
+  - "freqtrade/strategy/**"
+  - "freqtrade/optimize/**"
+---
+
 # Luật phát triển strategy (quant)
 
 Thiết kế gốc: [docs/signal-bot-workflow.md](../../docs/signal-bot-workflow.md). Logic engine: [docs/lifecycle.md](../../docs/lifecycle.md).

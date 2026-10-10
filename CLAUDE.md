@@ -7,7 +7,7 @@ Bot nội bộ **tính toán và phát tín hiệu** cho Binance USDT-M Futures,
 
 Engine là Freqtrade 2026.9 (GPLv3, giữ `LICENSE` + `NOTICE`). Logic riêng nằm trong `user_data/` (strategy, config). Core `freqtrade/` chỉ sửa trong các việc cắt gọn có kế hoạch.
 
-## Tài liệu (đọc trước khi làm)
+## Tài liệu (tra mục lục, chỉ đọc mục liên quan — không đọc cả file)
 | File | Nội dung |
 |---|---|
 | [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md) | **Thiết kế bot**: workflow, công thức, tin nhắn, ngưỡng kiểm chứng, lộ trình |
@@ -18,12 +18,13 @@ Engine là Freqtrade 2026.9 (GPLv3, giữ `LICENSE` + `NOTICE`). Logic riêng n�
 ## Luật bắt buộc
 @.claude/rules/git-workflow.md
 @.claude/rules/trading-safety.md
-@.claude/rules/quant-strategy.md
+- Luật strategy/kiểm chứng: [.claude/rules/quant-strategy.md](.claude/rules/quant-strategy.md) — tự nạp khi làm việc
+  với `user_data/strategies/`, `freqtrade/strategy|optimize/`; **đọc nó trước** khi viết, hyperopt hay kiểm chứng strategy.
 
 ## Skill dự án (gọi bằng `/tên`)
 | Skill | Khi nào dùng |
 |---|---|
-| `/commit` | Commit trên `develop` theo đúng luật: lint, test, quét secret, message tiếng Anh. Không push |
+| `/commit` | Commit trên `develop` theo đúng luật: gate (lint, test, quét secret), message tiếng Anh. Không push |
 | `/validate-strategy <Strategy>` | Tải dữ liệu thiếu → lookahead → recursive → backtest → so với ngưỡng đạt |
 | `/trim-core <module>` | Cắt bớt một phần source upstream an toàn: phân tích phụ thuộc → xóa → kiểm chứng → ghi log |
 
@@ -34,9 +35,10 @@ Engine là Freqtrade 2026.9 (GPLv3, giữ `LICENSE` + `NOTICE`). Logic riêng n�
 ```bash
 .venv/Scripts/freqtrade.exe download-data --config user_data/config_futures.json --timeframes 1h 4h --timerange 20221101-
 .venv/Scripts/freqtrade.exe backtesting --config user_data/config_futures.json --strategy <S> --fee 0.0006 --enable-protections --breakdown month
-.venv/Scripts/python.exe scripts/format_code.py          # format + chuẩn hóa encoding file đã đổi (trước commit)
+.venv/Scripts/python.exe scripts/gate.py                  # MỌI kiểm tra trước commit, output gọn (--tests, --skip, --only)
+.venv/Scripts/python.exe scripts/format_code.py          # format + chuẩn hóa encoding file đã đổi
 .venv/Scripts/python.exe scripts/check_encoding.py --all  # kiểm tra encoding toàn repo (hook pre-push cũng chạy)
-.venv/Scripts/python.exe -m pytest tests/<thư mục> -q
+.venv/Scripts/python.exe -m pytest tests/<thư mục> -q -p no:warnings   # chạy lẻ khi đang sửa
 ```
 - Lint: ruff (line-length 100, max-complexity 12); type check: mypy; test: pytest.
 - File text: UTF-8 không BOM + LF; `*.ps1` UTF-8 có BOM + CRLF (Windows PowerShell 5.1 cần BOM cho tiếng Việt).

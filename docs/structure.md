@@ -3,18 +3,19 @@
 > Bản đồ source `freqtrade/`: mỗi thư mục và file quan trọng kèm vai trò, các hàm chính,
 > và luồng nào đi qua đó. **Đã đối chiếu với code** (Freqtrade **2026.9**).
 > Logic chạy chi tiết: [lifecycle.md](lifecycle.md) · Tổng quan: [overview.md](overview.md)
+> Tài liệu cố ý **không ghi số dòng** (lệch sau mỗi lần sửa code): tìm hàm bằng `git grep -n "def <tên>"` hoặc LSP.
 
 ## Cây thư mục gốc
 
 ```
 freqtrade/  (repo)
-├── freqtrade/          # CORE — mã nguồn framework (~51k dòng Python, đã cắt gọn — xem trim-log.md)
+├── freqtrade/          # CORE — mã nguồn framework (~50k dòng Python, đã cắt gọn — xem trim-log.md)
 ├── user_data/          # CODE CỦA BẠN — strategy, config, data, kết quả (bị gitignore)
 ├── tests/              # Bộ test pytest, cấu trúc giống freqtrade/ (commands, exchange, freqtradebot,
 │                       #   optimize, persistence, plugins, rpc, strategy, tools, ...) + testdata/
 │                       #   tools/: test cho script dự án (hook ruff, check_imports, format_code...)
 ├── docs/               # Tài liệu tiếng Việt (overview, structure, lifecycle, signal-bot-workflow, trim-log)
-├── scripts/            # format_code.py (format trước commit), check_encoding.py (encoding/xuống dòng),
+├── scripts/            # gate.py (mọi kiểm tra trước commit, output gọn), format_code.py, check_encoding.py,
 │                       #   binance_update_lev_tiers.py (bảng đòn bẩy)
 ├── .gitattributes, .editorconfig, .pre-commit-config.yaml   # Chuẩn file text + git hook
 ├── Dockerfile, docker-compose.yml   # Build image từ repo, chạy futures dry-run (triển khai VPS)
@@ -29,37 +30,37 @@ freqtrade/  (repo)
 
 ## 1. File gốc trong `freqtrade/`
 
-| File | Dòng | Vai trò |
-|---|---|---|
-| [main.py](../freqtrade/main.py) | | Entry point: parse CLI (`Arguments`) → gọi `args["func"]`; bắt exception toàn cục, trả exit code |
-| [__main__.py](../freqtrade/__main__.py) | | Cho phép `python -m freqtrade` |
-| [worker.py](../freqtrade/worker.py) | 239 | `Worker`: vòng lặp `_throttle`, chuyển state, heartbeat, reload config |
-| [freqtradebot.py](../freqtrade/freqtradebot.py) | 2822 | **LÕI** `FreqtradeBot`: toàn bộ vòng đời trade live/dry-run |
-| [wallets.py](../freqtrade/wallets.py) | 538 | `Wallets`: số dư (live: từ sàn, dry: tính từ DB), tính và kiểm tra stake |
-| [constants.py](../freqtrade/constants.py) | | Hằng số, giá trị mặc định |
-| [exceptions.py](../freqtrade/exceptions.py) | | Cây exception (xem dưới) |
-| [misc.py](../freqtrade/misc.py) | | Tiện ích: đọc/ghi file, `deep_merge_dicts`, `remove_entry_exit_signals`... |
+| File | Vai trò |
+|---|---|
+| [main.py](../freqtrade/main.py) | Entry point: parse CLI (`Arguments`) → gọi `args["func"]`; bắt exception toàn cục, trả exit code |
+| [__main__.py](../freqtrade/__main__.py) | Cho phép `python -m freqtrade` |
+| [worker.py](../freqtrade/worker.py) | `Worker`: vòng lặp `_throttle`, chuyển state, heartbeat, reload config |
+| [freqtradebot.py](../freqtrade/freqtradebot.py) | **LÕI** `FreqtradeBot`: toàn bộ vòng đời trade live/dry-run |
+| [wallets.py](../freqtrade/wallets.py) | `Wallets`: số dư (live: từ sàn, dry: tính từ DB), tính và kiểm tra stake |
+| [constants.py](../freqtrade/constants.py) | Hằng số, giá trị mặc định |
+| [exceptions.py](../freqtrade/exceptions.py) | Cây exception (xem dưới) |
+| [misc.py](../freqtrade/misc.py) | Tiện ích: đọc/ghi file, `deep_merge_dicts`, `remove_entry_exit_signals`... |
 
 ### Hàm chính trong `freqtradebot.py`
 
-| Hàm | Dòng | Luồng |
-|---|---|---|
-| `__init__` | 93 | Khởi tạo exchange → strategy → DB → wallets → RPC → DataProvider → pairlist → protections |
-| `startup()` | 250 | Việc khi bắt đầu chạy: migrate, cập nhật lệnh mở từ sàn |
-| `process()` | 292 | **Một vòng lặp** của bot |
-| `_refresh_active_whitelist()` | 375 | Pairlist + cặp đang có lệnh mở |
-| `enter_positions()` / `create_trade()` | 780 / 838 | Đọc tín hiệu vào, kiểm tra lock |
-| `process_open_trade_positions()` / `check_and_call_adjust_trade_position()` | 902 / 920 | DCA |
-| `execute_entry()` | 1049 | Đặt lệnh vào, tạo Trade |
-| `get_valid_enter_price_and_stake()` | 1272 | Giá vào, đòn bẩy, stake (gọi các callback) |
-| `exit_positions()` / `handle_trade()` / `_check_and_execute_exit()` | 1469 / 1515 / 1550 | Kiểm tra & thực thi thoát |
-| `handle_stoploss_on_exchange()` | 1620 | Stoploss đặt trên sàn |
-| `manage_open_orders()` / `replace_order()` | 1755 / 1846 | Lệnh chưa khớp: timeout, đặt lại giá |
-| `handle_cancel_enter()` / `handle_cancel_exit()` | 2030 / 2121 | Xử lý lệnh bị hủy |
-| `execute_trade_exit()` | 2235 | Đặt lệnh thoát |
-| `update_trade_state()` / `_update_trade_after_fill()` | 2492 / 2546 | Cập nhật khi lệnh khớp |
-| `handle_protections()` | 2608 | Chạy protections sau khi trade đóng |
-| `check_liquidation_warnings()` | 414 | Futures: cảnh báo khi giá gần giá thanh lý |
+| Hàm | Luồng |
+|---|---|
+| `__init__` | Khởi tạo exchange → strategy → DB → wallets → RPC → DataProvider → pairlist → protections |
+| `startup()` | Việc khi bắt đầu chạy: migrate, cập nhật lệnh mở từ sàn |
+| `process()` | **Một vòng lặp** của bot |
+| `_refresh_active_whitelist()` | Pairlist + cặp đang có lệnh mở |
+| `enter_positions()` / `create_trade()` | Đọc tín hiệu vào, kiểm tra lock |
+| `process_open_trade_positions()` / `check_and_call_adjust_trade_position()` | DCA |
+| `execute_entry()` | Đặt lệnh vào, tạo Trade |
+| `get_valid_enter_price_and_stake()` | Giá vào, đòn bẩy, stake (gọi các callback) |
+| `exit_positions()` / `handle_trade()` / `_check_and_execute_exit()` | Kiểm tra & thực thi thoát |
+| `handle_stoploss_on_exchange()` | Stoploss đặt trên sàn |
+| `manage_open_orders()` / `replace_order()` | Lệnh chưa khớp: timeout, đặt lại giá |
+| `handle_cancel_enter()` / `handle_cancel_exit()` | Xử lý lệnh bị hủy |
+| `execute_trade_exit()` | Đặt lệnh thoát |
+| `update_trade_state()` / `_update_trade_after_fill()` | Cập nhật khi lệnh khớp |
+| `handle_protections()` | Chạy protections sau khi trade đóng |
+| `check_liquidation_warnings()` | Futures: cảnh báo khi giá gần giá thanh lý |
 
 ### Cây exception ([exceptions.py](../freqtrade/exceptions.py))
 ```
@@ -111,7 +112,7 @@ FreqtradeException
 | deprecated_settings.py | Cảnh báo/chuyển đổi khóa cũ (vd protections trong config) |
 | timerange.py | Parse `--timerange` |
 | config_setup.py, deploy_config.py, directory_operations.py, detect_environment.py | Thiết lập, tạo config mới, thư mục user_data, nhận diện môi trường |
-| [config_schema/config_schema.py](../freqtrade/config_schema/config_schema.py) | JSON schema đầy đủ của config (1025 dòng) |
+| [config_schema/config_schema.py](../freqtrade/config_schema/config_schema.py) | JSON schema đầy đủ của config |
 
 ---
 
@@ -119,7 +120,7 @@ FreqtradeException
 
 | File | Vai trò |
 |---|---|
-| [interface.py](../freqtrade/strategy/interface.py) (1695 dòng) | **`IStrategy`**: callback cho người dùng + các hàm nội bộ `ft_*` mà bot gọi |
+| [interface.py](../freqtrade/strategy/interface.py) | **`IStrategy`**: callback cho người dùng + các hàm nội bộ `ft_*` mà bot gọi |
 | parameters.py | `IntParameter`, `DecimalParameter`, `RealParameter`, `CategoricalParameter`, `BooleanParameter` |
 | hyper.py | `HyperStrategyMixin`: phát hiện tham số, nạp `<Strategy>.json` |
 | informative_decorator.py | `@informative()`: merge khung/cặp phụ, cột dạng `{column}_{timeframe}` |
@@ -129,15 +130,15 @@ FreqtradeException
 
 ### Hàm nội bộ quan trọng trong `IStrategy`
 
-| Hàm | Dòng | Ai gọi |
-|---|---|---|
-| `analyze()` → `analyze_pair()` → `_analyze_ticker_internal()` | 1080 / 1056 / 1021 | `process()` mỗi vòng |
-| `get_entry_signal()` / `get_exit_signal()` | 1169 / 1136 | `create_trade()` / `handle_trade()` |
-| `should_exit()` | 1234 | `_check_and_execute_exit()` + backtest |
-| `ft_stoploss_adjust()` / `ft_stoploss_reached()` | 1339 / 1420 | Trong `should_exit()` và sau khi lệnh khớp |
-| `min_roi_reached()` | 1534 | Trong `should_exit()` |
-| `ft_check_timed_out()` | 1549 | `manage_open_orders()` |
-| `advise_all_indicators()` | 1574 | Backtest/hyperopt (vectorized) |
+| Hàm | Ai gọi |
+|---|---|
+| `analyze()` → `analyze_pair()` → `_analyze_ticker_internal()` | `process()` mỗi vòng |
+| `get_entry_signal()` / `get_exit_signal()` | `create_trade()` / `handle_trade()` |
+| `should_exit()` | `_check_and_execute_exit()` + backtest |
+| `ft_stoploss_adjust()` / `ft_stoploss_reached()` | Trong `should_exit()` và sau khi lệnh khớp |
+| `min_roi_reached()` | Trong `should_exit()` |
+| `ft_check_timed_out()` | `manage_open_orders()` |
+| `advise_all_indicators()` | Backtest/hyperopt (vectorized) |
 
 Danh sách callback người dùng: [lifecycle.md mục Q](lifecycle.md#q-danh-sách-callback-của-strategy).
 
@@ -147,7 +148,7 @@ Danh sách callback người dùng: [lifecycle.md mục Q](lifecycle.md#q-danh-s
 
 | File | Vai trò |
 |---|---|
-| [exchange.py](../freqtrade/exchange/exchange.py) (4150 dòng) | **Lớp `Exchange`**: markets, OHLCV, đặt/hủy/lấy lệnh, số dư, phí, leverage tiers, funding fee, giả lập dry-run (`create_dry_run_order`, `check_dry_limit_order_filled`) |
+| [exchange.py](../freqtrade/exchange/exchange.py) | **Lớp `Exchange`**: markets, OHLCV, đặt/hủy/lấy lệnh, số dư, phí, leverage tiers, funding fee, giả lập dry-run (`create_dry_run_order`, `check_dry_limit_order_filled`) |
 | exchange_ws.py | `ExchangeWS`: nhận nến qua WebSocket (ccxt pro) khi sàn bật `ws_enabled` |
 | exchange_types.py | Kiểu dữ liệu: `FtHas` (khả năng sàn), `Ticker`, `OrderBook`, `CcxtBalance`, `CcxtPosition`, `LeverageTier`, `CcxtOrder` |
 | exchange_utils.py / exchange_utils_timeframe.py | Tiện ích: làm tròn precision, `timeframe_to_*` |
@@ -184,7 +185,7 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 
 | Nhóm | File | Vai trò |
 |---|---|---|
-| Backtest | backtesting.py (1962 dòng) | Engine mô phỏng: `_get_ohlcv_as_lists` (dịch tín hiệu), `backtest_loop`, mô hình khớp lệnh |
+| Backtest | backtesting.py | Engine mô phỏng: `_get_ohlcv_as_lists` (dịch tín hiệu), `backtest_loop`, mô hình khớp lệnh |
 | | backtest_caching.py | Cache kết quả backtest |
 | | optimize_reports/ (optimize_reports.py, bt_output.py, bt_storage.py) | Tạo bảng/thống kê, in kết quả, lưu file .zip |
 | Hyperopt | hyperopt/hyperopt.py | Vòng lặp epoch, chạy song song (joblib), lưu .fthypt |
@@ -228,7 +229,7 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 
 | File | Vai trò |
 |---|---|
-| [trade_model.py](../freqtrade/persistence/trade_model.py) (2197 dòng) | **`Trade`/`LocalTrade` + `Order`**: trạng thái lệnh, tính lãi lỗ, stoploss (`adjust_stop_loss`), funding, liquidation. `LocalTrade` dùng trong backtest (không ghi DB) |
+| [trade_model.py](../freqtrade/persistence/trade_model.py) | **`Trade`/`LocalTrade` + `Order`**: trạng thái lệnh, tính lãi lỗ, stoploss (`adjust_stop_loss`), funding, liquidation. `LocalTrade` dùng trong backtest (không ghi DB) |
 | pairlock.py / pairlock_middleware.py | Bảng `PairLock` + API `PairLocks` (khóa cặp/toàn cục) |
 | custom_data.py | `trade.set_custom_data()` / `get_custom_data()` — lưu dữ liệu riêng cho từng trade (cả trong backtest) |
 | key_value_store.py | Lưu khóa–giá trị dùng chung (vd thời điểm bot bắt đầu) |
@@ -242,10 +243,10 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 
 | File | Vai trò |
 |---|---|
-| [rpc.py](../freqtrade/rpc/rpc.py) (1845 dòng) | **Logic chung** cho mọi kênh: status, profit, `_rpc_force_entry`, `_rpc_force_exit`, `_rpc_analysed_dataframe`, start/stop/pause... |
+| [rpc.py](../freqtrade/rpc/rpc.py) | **Logic chung** cho mọi kênh: status, profit, `_rpc_force_entry`, `_rpc_force_exit`, `_rpc_analysed_dataframe`, start/stop/pause... |
 | rpc_manager.py | Đăng ký kênh (Telegram, Webhook, API) và phát `send_msg()` |
 | rpc_types.py | Kiểu message gửi đi |
-| telegram.py (2336 dòng) | Bot Telegram (thread `FTTelegram`) |
+| telegram.py | Bot Telegram (thread `FTTelegram`) |
 | webhook.py | Gửi sự kiện ra URL ngoài (có retry/timeout) |
 | fiat_convert.py | Quy đổi tiền pháp định (CoinGecko) |
 
@@ -325,10 +326,11 @@ user_data/
 ## Công cụ chất lượng code
 
 ```bash
+python scripts/gate.py               # MỌI kiểm tra dưới đây + quét secret, mỗi bước 1 dòng
 ruff check freqtrade tests scripts   # lint (line-length 100, max-complexity 12)
 ruff format freqtrade tests scripts  # format
 mypy freqtrade                       # type check
 pytest tests -n auto --ignore=tests/exchange_online   # test (asyncio_mode=auto)
-# CI (.github/workflows/ci.yml): ubuntu-24.04 + Python 3.13, ruff (freqtrade, tests) + pytest
+# CI (.github/workflows/ci.yml): ubuntu-24.04 + Python 3.13, ruff (freqtrade, tests, scripts) + pytest
 # tests/exchange_online: gọi API Binance thật, chạy tay khi nâng ccxt (pytest --longrun)
 ```
