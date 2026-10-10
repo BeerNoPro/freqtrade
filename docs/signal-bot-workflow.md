@@ -201,3 +201,13 @@ File sẽ tạo/sửa (đều trong `user_data/`, không đụng core):
 | 4 | Tạo bot BotFather, thuê VPS, triển khai dry-run | Bạn (Claude hướng dẫn) |
 | 5 | Theo dõi 4 tuần, đánh giá | Cùng làm |
 | 6 | Giai đoạn 2: bot tự vào lệnh với vốn nhỏ | Quyết định sau |
+
+### 9.1 Nhận định thị trường ↔ tín hiệu
+Song song với các bước trên là nhánh **nhận định thị trường** ([market-context-engine.md](market-context-engine.md)):
+các hook có tên, có thống kê, đưa ra xác suất + mức vô hiệu và được ghi vào forward journal.
+- Nhận định **không** tự phát tín hiệu. Nó là tầng ngữ cảnh: chặn hoặc giảm điểm tín hiệu khi ngược nhận định
+  `active`, cộng điểm khi cùng chiều (thay thế dần bộ lọc 4h/BTC ở mục 3.1–3.2 nếu chứng minh tốt hơn).
+- Chỉ dùng làm bộ lọc sau khi qua P1–P5 của lộ trình MCE (event study IS → walk-forward → holdout một lần →
+  forward journal ≥ 4 tuần, ≥ 300 nhận định, Brier skill > 0).
+- Tiêu chí giữ bộ lọc: trên OOS, tín hiệu có lọc phải có kỳ vọng R cao hơn tín hiệu không lọc mà không giảm số tín hiệu
+  dưới ngưỡng ở mục 7.

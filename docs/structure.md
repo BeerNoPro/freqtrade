@@ -17,6 +17,8 @@ freqtrade/  (repo)
 ├── docs/               # Tài liệu tiếng Việt (overview, structure, lifecycle, signal-bot-workflow, trim-log)
 ├── scripts/            # gate.py (mọi kiểm tra trước commit, output gọn), format_code.py, check_encoding.py,
 │                       #   binance_update_lev_tiers.py (bảng đòn bẩy)
+│                       #   research/: Market Context Engine (package mce, event study, collector)
+│                       #   — xem docs/market-context-engine.md; test ở tests/research/
 ├── .gitattributes, .editorconfig, .pre-commit-config.yaml   # Chuẩn file text + git hook
 ├── Dockerfile, docker-compose.yml   # Build image từ repo, chạy futures dry-run (triển khai VPS)
 ├── requirements.txt    # Toàn bộ thư viện để chạy bot (gồm hyperopt)
