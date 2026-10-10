@@ -468,3 +468,23 @@ def test_get_funding_rate_timeframe_no_exchange(default_conf_usdt):
 
     with pytest.raises(OperationalException, match=r"Exchange is not available to DataProvider."):
         dp.get_funding_rate_timeframe()
+
+
+def test_dp_funding_rate(mocker, default_conf_usdt):
+    default_conf_usdt["trading_mode"] = "futures"
+    default_conf_usdt["margin_mode"] = "isolated"
+    exchange = get_patched_exchange(mocker, default_conf_usdt)
+    rate = {"symbol": "ETH/USDT:USDT", "fundingRate": 0.0001, "markPrice": 2.0}
+    fetch_mock = mocker.patch(f"{EXMS}.fetch_funding_rate", return_value=rate)
+
+    dp = DataProvider(default_conf_usdt, exchange)
+    assert dp.funding_rate("ETH/USDT:USDT") == rate
+    fetch_mock.assert_called_once_with("ETH/USDT:USDT")
+
+    # Exchange errors must not break the strategy callback - empty dict instead
+    fetch_mock.side_effect = ExchangeError("Funding rate unavailable")
+    assert dp.funding_rate("ETH/USDT:USDT") == {}
+
+    dp = DataProvider(default_conf_usdt, None)
+    with pytest.raises(OperationalException, match=r"Exchange is not available to DataProvider."):
+        dp.funding_rate("ETH/USDT:USDT")
