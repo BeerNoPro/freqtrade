@@ -82,7 +82,7 @@ def run(hooks: list[Hook], frames: dict[str, pd.DataFrame], cfg: StudyConfig) ->
         return pd.DataFrame()
     events = pd.concat(parts, ignore_index=True)
     events["year"] = events["date"].dt.year
-    events["week"] = events["date"].dt.to_period("W").astype(str)
+    events["week"] = events["date"].dt.tz_localize(None).dt.to_period("W").astype(str)
     return events
 
 
