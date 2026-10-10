@@ -1,26 +1,27 @@
 # Tổng quan dự án (Overview)
 
 > Tài liệu tiếng Việt tóm tắt. Tài liệu gốc đầy đủ: https://www.freqtrade.io
+> Repo này là bản **đã cắt gọn** cho bot tín hiệu Binance Futures — các phần đã xóa ghi ở [trim-log.md](trim-log.md).
 
 ## Freqtrade là gì?
 
 **Freqtrade** là một **framework bot giao dịch crypto** miễn phí, mã nguồn mở (Python 3.11+, giấy phép GPLv3).
 
-- Hỗ trợ giao dịch **Spot** và **Futures** (đòn bẩy) qua thư viện [`ccxt`](https://github.com/ccxt/ccxt) trên hầu hết các sàn lớn (Binance, Bybit, OKX, Kraken, Gate.io...).
+- Giao dịch **Spot** và **Futures** (đòn bẩy, margin isolated) qua thư viện [`ccxt`](https://github.com/ccxt/ccxt). Bản gốc hỗ trợ ~20 sàn; repo này **chỉ giữ họ Binance**.
 - Điều khiển qua **Telegram**, **WebUI (FreqUI)** hoặc **REST API**.
 - Lưu trạng thái bằng **SQLite** (qua SQLAlchemy 2.x) — không cần cài database server riêng.
-- Bao gồm các công cụ: **backtesting** (kiểm thử trên dữ liệu lịch sử), **hyperopt** (tối ưu tham số) và **plotting** (vẽ biểu đồ).
+- Bao gồm các công cụ: **backtesting** (kiểm thử trên dữ liệu lịch sử), **hyperopt** (tối ưu tham số), **lookahead/recursive analysis**. Plotting, FreqAI, Edge, Discord đã bị xóa.
 
 ## Triết lý sử dụng
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  freqtrade/   → CORE (upstream chuẩn, KHÔNG sửa)         │
+│  freqtrade/   → CORE (upstream đã cắt gọn có kế hoạch)   │
 │  user_data/   → CODE CỦA BẠN (strategy, config, data)   │
 └─────────────────────────────────────────────────────────┘
 ```
 
-Logic giao dịch riêng của bạn nằm trong **`user_data/`** (strategies, config). **Không sửa core trong `freqtrade/`** trừ khi thực sự cần — để dễ cập nhật bản upstream sau này.
+Logic giao dịch riêng của bạn nằm trong **`user_data/`** (strategies, config). Core `freqtrade/` chỉ sửa trong các đợt cắt gọn có kế hoạch (ghi lại ở [trim-log.md](trim-log.md)).
 
 ## Các chế độ chạy (run modes)
 
@@ -53,14 +54,14 @@ Liệt kê đầy đủ các khối chức năng có sẵn trong source (chi ti�
 |---|---|---|
 | **Lõi giao dịch** | `freqtradebot.py`, `worker.py`, `wallets.py` | Vòng đời trade live/dry-run, vòng lặp throttle, quản lý vốn |
 | **Chiến lược** | `strategy/` (`IStrategy`) | Indicators, tín hiệu vào/ra, ~17 callback tùy biến |
-| **Sàn giao dịch** | `exchange/` | Wrapper ccxt + lớp riêng ~20 sàn (spot & futures) |
+| **Sàn giao dịch** | `exchange/` | Wrapper ccxt + lớp `Binance` (spot & USDT-M futures) |
 | **Backtesting** | `optimize/backtesting.py` | Mô phỏng chiến lược trên dữ liệu lịch sử |
-| **Hyperopt** | `optimize/hyperopt*.py` | Tối ưu tham số (Optuna) + 14 hàm loss |
-| **Pairlist** | `plugins/pairlist/` | 7 generator + 12 filter chọn coin động/tĩnh |
+| **Hyperopt** | `optimize/hyperopt*.py` | Tối ưu tham số (Optuna) + 12 hàm loss |
+| **Pairlist** | `plugins/pairlist/` | 4 generator + 12 filter chọn coin động/tĩnh |
 | **Protections** | `plugins/protections/` | 4 cơ chế bảo vệ vốn |
 | **Lưu trữ** | `persistence/` | Model `Trade`/`Order`, DB SQLite, pairlock |
 | **Dữ liệu** | `data/` | DataProvider, tải/chuyển đổi OHLCV, metrics |
-| **Điều khiển (RPC)** | `rpc/` | Telegram, REST API + WebUI, webhook, discord |
+| **Điều khiển (RPC)** | `rpc/` | Telegram, REST API + WebUI/WebSocket, webhook |
 | **Phân tích an toàn** | `optimize/lookahead*`, `recursive*` | Phát hiện look-ahead bias & lỗi đệ quy |
 | **Hạ tầng** | `configuration/`, `resolvers/`, `enums/`, `util/`... | Config, nạp động, enum, tiện ích |
 
@@ -68,7 +69,7 @@ Liệt kê đầy đủ các khối chức năng có sẵn trong source (chi ti�
 
 ## Yêu cầu hệ thống
 
-- Python >= 3.11, pip, git
+- Python >= 3.11 (đã kiểm thử 3.13), uv, git
 - **TA-Lib** (thư viện chỉ báo kỹ thuật, native)
 - Khuyến nghị: virtualenv (hoặc Docker)
 - Phần cứng tối thiểu: 2GB RAM, 1GB đĩa, 2 vCPU (dry-run/backtest nhẹ; hyperopt nặng hơn)
@@ -77,5 +78,6 @@ Liệt kê đầy đủ các khối chức năng có sẵn trong source (chi ti�
 
 - [structure.md](structure.md) — Bản đồ cấu trúc source code
 - [lifecycle.md](lifecycle.md) — Vòng đời chạy của bot
+- [trim-log.md](trim-log.md) — Nhật ký các phần đã cắt khỏi bản gốc
 - [Tài liệu chính thức](https://www.freqtrade.io) — tham khảo đầy đủ
 - [signal-bot-workflow.md](signal-bot-workflow.md) — Thiết kế bot tín hiệu

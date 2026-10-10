@@ -4,8 +4,8 @@ Ghi lại mọi phần đã xóa khỏi code Freqtrade 2026.9, để biết vì 
 (bản đầy đủ: tag/commit Freqtrade 2026.9 trên GitHub, hoặc file backup `freqtrade-backup-2026-10-07.bundle`).
 
 Kiểm chứng chuẩn sau mỗi lần cắt: import core, `freqtrade --version`, `list-strategies`, `pytest tests`
-(bỏ qua `tests/exchange_online`), backtest ngắn. 4 test luôn fail trên Windows ở cả bản gốc, không liên quan:
-`test_startup_time`, `test_sysinfo`, `test_pip_audit_*` (2 test).
+(bỏ qua `tests/exchange_online`), backtest ngắn. Từ commit 23ed0d9/ba3a5f1, bộ test chạy xanh trên Windows (0 fail; trước đó 4 test
+môi trường luôn fail: `test_startup_time`, `test_sysinfo`, `test_pip_audit_*`).
 
 | Ngày | Phần đã cắt | Quy mô | Chỗ phải sửa | Kiểm chứng |
 |---|---|---|---|---|

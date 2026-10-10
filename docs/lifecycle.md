@@ -57,13 +57,14 @@ main.py: main()                                  → Arguments → args["func"]
                            00:02 reset WS, 00:07 ghi lịch sử ví
             11. strategy.ft_bot_start()            → callback bot_start() + nạp tham số hyperopt
             12. ProtectionManager                  khởi tạo SAU bot_start (để đọc được tham số)
+            13. validate_informative_candle_types() sàn phải hỗ trợ mọi loại nến strategy xin
  └─ Worker.run() → khi state chuyển sang RUNNING/PAUSED lần đầu → FreqtradeBot.startup():
              migrate DB, gửi thông báo khởi động, cập nhật precision trade cũ,
              Trade.stoploss_reinitialization() (nếu đổi stoploss), cập nhật lệnh mở từ sàn
              (chỉ live), cập nhật giá thanh lý + funding fee
 ```
 
-Code: [main.py](../freqtrade/main.py) · [worker.py](../freqtrade/worker.py) · [freqtradebot.py `__init__`](../freqtrade/freqtradebot.py#L94) · [`startup()`](../freqtrade/freqtradebot.py#L264)
+Code: [main.py](../freqtrade/main.py) · [worker.py](../freqtrade/worker.py) · [freqtradebot.py `__init__`](../freqtrade/freqtradebot.py#L93) · [`startup()`](../freqtrade/freqtradebot.py#L250)
 
 ### Thứ tự ưu tiên config (cao → thấp)
 
@@ -111,7 +112,7 @@ với vòng lặp chính bằng **`FreqtradeBot._exit_lock`**.
 
 ## D. Bên trong `process()`
 
-[freqtradebot.py:306](../freqtrade/freqtradebot.py#L306)
+[freqtradebot.py:292](../freqtrade/freqtradebot.py#L292)
 
 | # | Bước | Hàm | Ghi chú |
 |---|---|---|---|
@@ -142,7 +143,7 @@ với vòng lặp chính bằng **`FreqtradeBot._exit_lock`**.
   (Binance futures 499), freqtrade gọi nhiều lần nếu cần (tối đa 5 lần).
 
 ### Phân tích — `IStrategy.analyze()` → `analyze_pair()` → `_analyze_ticker_internal()`
-[interface.py:1206](../freqtrade/strategy/interface.py#L1206)
+[interface.py:1021](../freqtrade/strategy/interface.py#L1021)
 ```
 với mỗi cặp (tuần tự):
   nếu process_only_new_candles = False HOẶC có nến mới:
@@ -156,7 +157,7 @@ với mỗi cặp (tuần tự):
 - Dataframe đã phân tích (kèm tín hiệu) được giữ trong cache suốt cây nến; API `/pair_candles` cũng đọc từ cache này.
 
 ### Đọc tín hiệu vào — `get_entry_signal()`
-[interface.py:1354](../freqtrade/strategy/interface.py#L1354)
+[interface.py:1169](../freqtrade/strategy/interface.py#L1169)
 - Chỉ xét **dòng cuối** (nến đã đóng gần nhất).
 - Bỏ qua nếu dữ liệu cũ: nến cuối cũ hơn `2 × timeframe + outdated_offset (5 phút)`.
 - Long khi `enter_long == 1` **và không có** `exit_long` hoặc `enter_short` cùng nến.
@@ -185,7 +186,7 @@ RemotePairList (URL)         ShuffleFilter, ...
 ## G. Vào lệnh
 
 `enter_positions()` → với từng cặp chưa có lệnh mở → `create_trade()` → `execute_entry()`
-([freqtradebot.py:794-1262](../freqtrade/freqtradebot.py#L794-L1262))
+([freqtradebot.py:780-1246](../freqtrade/freqtradebot.py#L780-L1246))
 
 ```
 0. Đang có global lock (protection toàn cục)? → không vào lệnh nào
@@ -216,7 +217,7 @@ RemotePairList (URL)         ShuffleFilter, ...
 ## H. Quản lý lệnh chưa khớp & xử lý khi khớp
 
 ### `manage_open_orders()` — mỗi vòng
-[freqtradebot.py:1769](../freqtrade/freqtradebot.py#L1769)
+[freqtradebot.py:1755](../freqtrade/freqtradebot.py#L1755)
 ```
 với mỗi lệnh đang mở của mỗi trade:
   fetch_order() (hỏi sàn — polling)  → update_trade_state()
@@ -231,7 +232,7 @@ với mỗi lệnh đang mở của mỗi trade:
 - Lệnh thoát hết hạn quá `unfilledtimeout.exit_timeout_count` lần → thoát khẩn cấp (`emergency_exit`, mặc định market).
 
 ### Khi một lệnh khớp — `update_trade_state()` → `_update_trade_after_fill()`
-[freqtradebot.py:2506-2604](../freqtrade/freqtradebot.py#L2506-L2604)
+[freqtradebot.py:2492-2588](../freqtrade/freqtradebot.py#L2492-L2588)
 ```
 cập nhật Order + Trade (amount, giá trung bình, phí)
 → order_filled()                                callback
@@ -243,7 +244,7 @@ cập nhật Order + Trade (amount, giá trung bình, phí)
 → thông báo fill; nếu là lệnh thoát và trade đã đóng → handle_protections()   (mục K)
 ```
 
-### Dry-run khớp lệnh thế nào ([exchange.py](../freqtrade/exchange/exchange.py#L1206))
+### Dry-run khớp lệnh thế nào ([exchange.py](../freqtrade/exchange/exchange.py#L1168))
 - Market: giá khớp tính bằng cách "đi" qua orderbook L2 (20 mức), trượt giá tối đa 5%.
 - Limit: khớp khi giá **cắt qua** orderbook (mua: ask ≤ giá đặt). Nếu lúc đặt đã cắt spread hơn 1% thì chuyển thành market.
 
@@ -251,7 +252,7 @@ cập nhật Order + Trade (amount, giá trung bình, phí)
 
 ## I. Thoát lệnh
 
-`exit_positions()` ([freqtradebot.py:1483](../freqtrade/freqtradebot.py#L1483))
+`exit_positions()` ([freqtradebot.py:1469](../freqtrade/freqtradebot.py#L1469))
 ```
 với mỗi trade đang mở:
   1. stoploss_on_exchange bật → handle_stoploss_on_exchange()   (mục J); nếu đã đóng → xong
@@ -263,7 +264,7 @@ với mỗi trade đang mở:
 ```
 
 ### `should_exit()` — thứ tự lý do thoát
-[interface.py:1419-1522](../freqtrade/strategy/interface.py#L1419-L1522)
+[interface.py:1234-1337](../freqtrade/strategy/interface.py#L1234-L1337)
 ```
 1. EXIT_SIGNAL (exit_long/exit_short = 1 và không có enter cùng chiều)
    hoặc CUSTOM_EXIT (custom_exit() trả về True/chuỗi)       ← chỉ khi use_exit_signal = True
@@ -288,7 +289,7 @@ với mỗi trade đang mở:
 Lấy mức ROI theo thời gian giữ lệnh từ `minimal_roi`; nếu `use_custom_roi` thì dùng `min(bảng ROI, custom_roi())`.
 Thoát khi lợi nhuận hiện tại > mức đó.
 
-### `execute_trade_exit()` ([freqtradebot.py:2249](../freqtrade/freqtradebot.py#L2249))
+### `execute_trade_exit()` ([freqtradebot.py:2235](../freqtrade/freqtradebot.py#L2235))
 ```
 loại lệnh: exit | stoploss (theo order_types) | emergency_exit (mặc định market)
 → custom_exit_price()        nếu lệnh limit
@@ -303,7 +304,7 @@ loại lệnh: exit | stoploss (theo order_types) | emergency_exit (mặc địn
 
 ## J. Stoploss trên sàn (`stoploss_on_exchange`)
 
-[`handle_stoploss_on_exchange()`](../freqtrade/freqtradebot.py#L1634):
+[`handle_stoploss_on_exchange()`](../freqtrade/freqtradebot.py#L1620):
 - Lệnh vào đã khớp mà chưa có lệnh stop → đặt lệnh stop trên sàn (Binance futures: `stop_market`/`stop`).
 - Lệnh stop đã khớp → đóng trade.
 - Lệnh stop bị hủy → đặt lại.
@@ -316,7 +317,7 @@ Lợi ích: bot chết/mất mạng vẫn có stop trên sàn. Ở dry-run, stop
 
 ## K. Protections & PairLocks
 
-**Khi nào chạy** ([`handle_protections()`](../freqtrade/freqtradebot.py#L2622)):
+**Khi nào chạy** ([`handle_protections()`](../freqtrade/freqtradebot.py#L2608)):
 **chỉ sau khi một lệnh thoát khớp và trade đóng**:
 ```
 khóa cặp vừa đóng (cùng chiều) đến hết nến hiện tại   ← chống vào lại ngay
@@ -343,7 +344,7 @@ Lock lưu trong bảng PairLocks ([pairlock_middleware.py](../freqtrade/persiste
 ## L. Điều chỉnh vị thế (DCA)
 
 Khi `position_adjustment_enable = True`, mỗi vòng `process_open_trade_positions()` gọi
-`adjust_trade_position()` cho từng trade đang mở ([freqtradebot.py:934](../freqtrade/freqtradebot.py#L934)):
+`adjust_trade_position()` cho từng trade đang mở ([freqtradebot.py:920](../freqtrade/freqtradebot.py#L920)):
 - Được gọi cho trade đang có vị thế **hoặc** đang có lệnh chưa khớp.
 - Trả về số **dương** → mua thêm, qua `execute_entry(mode="pos_adjust")`.
   Giới hạn bởi `max_entry_position_adjustment`; bị chặn khi bot ở state PAUSED;
@@ -409,7 +410,7 @@ Khi `position_adjustment_enable = True`, mỗi vòng `process_open_trade_positio
 | `POST /forceexit` | `_rpc_force_exit` → `execute_trade_exit()` loại FORCE_EXIT |
 | `POST /start, /stop, /pause, /reload_config` | Đổi state |
 
-**`/forceenter` khác tín hiệu strategy ở đâu** ([rpc.py:1138-1222](../freqtrade/rpc/rpc.py#L1138-L1222)):
+**`/forceenter` khác tín hiệu strategy ở đâu** ([rpc.py:1157-1221](../freqtrade/rpc/rpc.py#L1157-L1221)):
 - Cần `force_entry_enable: true` và state RUNNING.
 - Chỉ kiểm tra: cặp tồn tại, đúng stake currency, không short trên spot, còn slot, chưa có lệnh cùng cặp.
 - **Bỏ qua PairLocks và Protections.**
@@ -480,7 +481,7 @@ Tên cũ vẫn tương thích ngược: `populate_buy_trend`/`populate_sell_tren
 | Tình huống | Giá khớp |
 |---|---|
 | Vào lệnh | Giá đề xuất = **open của nến sau nến tín hiệu** (hoặc `custom_entry_price`, kẹp trong [low, high]) |
-| Lệnh limit | Khớp nếu giá nằm trong `[low, high]` của nến — **chạm là khớp** ([backtesting.py:787](../freqtrade/optimize/backtesting.py#L787)) |
+| Lệnh limit | Khớp nếu giá nằm trong `[low, high]` của nến — **chạm là khớp** ([backtesting.py:772](../freqtrade/optimize/backtesting.py#L772)) |
 | Stoploss | Đúng giá stop; nếu nến mở gap qua stop → giá open |
 | Trailing kích hoạt ngay nến vào lệnh | Giả định bi quan nhất |
 | ROI | Giá đạt mức ROI trong nến |

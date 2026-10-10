@@ -13,6 +13,7 @@ Engine dựa trên [Freqtrade](https://github.com/freqtrade/freqtrade) 2026.9 (G
 | [docs/overview.md](docs/overview.md) | Tổng quan engine và các chế độ chạy |
 | [docs/lifecycle.md](docs/lifecycle.md) | Logic chạy chi tiết (đã đối chiếu với code) |
 | [docs/structure.md](docs/structure.md) | Bản đồ source code |
+| [docs/trim-log.md](docs/trim-log.md) | Nhật ký các phần đã cắt khỏi Freqtrade gốc |
 
 ## Chạy ở máy local (Windows)
 
