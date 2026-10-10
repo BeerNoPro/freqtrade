@@ -292,3 +292,63 @@ def test_check_int_nonzero() -> None:
 
     with pytest.raises(argparse.ArgumentTypeError):
         check_int_nonzero("DeadBeef")
+
+
+EXPECTED_SUBCOMMANDS = {
+    "trade",
+    "create-userdir",
+    "new-config",
+    "show-config",
+    "new-strategy",
+    "download-data",
+    "convert-data",
+    "convert-trade-data",
+    "trades-to-ohlcv",
+    "list-data",
+    "backtesting",
+    "backtesting-show",
+    "backtesting-analysis",
+    "hyperopt",
+    "hyperopt-list",
+    "hyperopt-show",
+    "list-exchanges",
+    "list-markets",
+    "list-pairs",
+    "list-strategies",
+    "list-hyperoptloss",
+    "list-timeframes",
+    "show-trades",
+    "test-pairlist",
+    "convert-db",
+    "install-ui",
+    "webserver",
+    "lookahead-analysis",
+    "recursive-analysis",
+}
+
+
+def test_available_subcommands() -> None:
+    """Pin the trimmed CLI surface - adding or removing a command must be deliberate."""
+    parser = Arguments([])
+    parser._build_subcommands()
+    subparsers = next(
+        a for a in parser.parser._actions if isinstance(a, argparse._SubParsersAction)
+    )
+    assert set(subparsers.choices) == EXPECTED_SUBCOMMANDS
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["plot-dataframe", "plot-profit", "strategy-updater", "edge", "list-freqaimodels"],
+)
+def test_removed_subcommands_rejected(command, capsys) -> None:
+    with pytest.raises(SystemExit):
+        Arguments([command]).get_parsed_arg()
+    assert "invalid choice" in capsys.readouterr().err
+
+
+def test_convert_trade_data_rejects_kraken_csv(capsys) -> None:
+    args = ["convert-trade-data", "--format-from", "kraken_csv", "--format-to", "feather"]
+    with pytest.raises(SystemExit):
+        Arguments(args).get_parsed_arg()
+    assert "invalid choice: 'kraken_csv'" in capsys.readouterr().err
