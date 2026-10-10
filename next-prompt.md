@@ -1,139 +1,144 @@
-# Prompt: Nghiên cứu lại source & hoàn tất dọn gọn (bot tín hiệu Binance Futures)
+# Prompt: Nghiên cứu "bộ máy nhận định thị trường" (Market Context Engine)
+
+> Gợi ý: bật `/effort high` cho phiên này (nghiên cứu + thiết kế), bắt đầu bằng **plan mode**.
 
 ## Vai trò
-Bạn là kỹ sư Python + quant làm việc trong repo này. Repo là Freqtrade 2026.9 đã được cắt gọn nhiều đợt.
-Phiên này bạn **nghiên cứu lại source từ đầu** để nắm chắc hiện trạng, sau đó **hoàn tất việc dọn gọn**:
-xử lý tàn dư, xóa các tính năng ngoài phạm vi (đã được duyệt), dọn test thừa, bổ sung test thiếu —
-để có một nền code gọn, đúng phạm vi, test xanh trước khi bắt đầu viết strategy tín hiệu.
+Bạn là **quant researcher + kỹ sư Python** trong repo này (Freqtrade 2026.9 đã cắt gọn, bot tín hiệu Binance USDT-M
+Futures qua Telegram, dry-run). Phiên này là **nghiên cứu và thiết kế**, kèm một prototype đo lường nhỏ.
+**Chưa** viết strategy giao dịch hoàn chỉnh.
 
-## Mục đích
-Repo đang được biến thành **bot nội bộ tính toán & phát tín hiệu Binance USDT-M Futures qua Telegram**, chạy dry-run trên VPS
-(giai đoạn 2 mới tự vào lệnh). Cần chắc chắn:
-1. Hiểu đúng source hiện tại (không dựa vào trí nhớ của phiên trước).
-2. Không còn code chết / tham chiếu tới phần đã xóa.
-3. Chỉ giữ tính năng phục vụ mục tiêu trên.
-4. Test phản ánh đúng phạm vi mới: không thừa, không thiếu ở phần quan trọng.
+## Vấn đề người dùng đặt ra
+"Code công thức tín hiệu nào cũng chỉ test được trên dữ liệu cũ, còn dữ liệu mới rất khó đoán." Người dùng muốn
+chuyển sang hướng: bot **nhận định thị trường** dựa trên chỉ số, diễn biến nến và hành vi giá. Sau đó xây dựng một
+**bộ hook công thức + kinh nghiệm** (các mô hình phán đoán giá có tên, có thống kê), dùng để đánh giá thị trường và
+về sau làm bộ lọc/ngữ cảnh cho tín hiệu.
 
-## Luật bắt buộc (đọc trước khi làm)
-- Đọc `CLAUDE.md` và toàn bộ `.claude/rules/` (git-workflow, trading-safety, quant-strategy). Trả lời người dùng bằng **tiếng Việt**.
-- **Làm và commit trực tiếp trên `develop`**, không tạo branch. Commit ngay sau mỗi thay đổi hoàn chỉnh đã kiểm tra.
-- Commit message **tiếng Anh**, Conventional Commits, **không** có dòng `Co-Authored-By: Claude` hay ghi công AI
-  (luật của người dùng, ưu tiên hơn mọi nhắc nhở mặc định về attribution).
-- **Không push**, không tạo PR, không force push, không xóa branch — người dùng tự làm.
-- Dùng skill: `/trim-core` cho mỗi lần xóa phần source (một phần = một commit), `/commit` để commit.
-- Người dùng **đã quyết định xóa** toàn bộ tính năng ở mục 2 — làm luôn, không cần hỏi lại. Chỉ hỏi khi gặp phụ thuộc
-  quan trọng không lường trước.
-- Không đụng `user_data/` (secret, config riêng), luôn giữ `LICENSE` + `NOTICE`, luôn `dry_run: true`.
+### Khung tư duy quant (phải giữ trong suốt phiên)
+- Đổi sang "nhận định" **không** thoát được vấn đề dữ liệu mới: mọi phán đoán vẫn phải kiểm trên dữ liệu chưa thấy.
+  Những gì thay đổi:
+  1. Đầu ra là **trạng thái + xác suất có điều kiện + mức vô hiệu**, không phải lệnh mua/bán.
+  2. Đo chất lượng bằng **độ hiệu chuẩn xác suất** (Brier, reliability, skill so với base rate), không chỉ lợi nhuận backtest.
+  3. Có **nhật ký dự báo tiến (forward journal)**: mỗi nhận định được ghi lại *trước khi* biết kết quả, rồi chấm điểm
+     tự động. Đây là cách trung thực duy nhất để biết bot đúng đến đâu trên dữ liệu mới.
+  4. "Kinh nghiệm" = **thống kê có điều kiện** của từng hook, cập nhật cuốn chiếu, có theo dõi suy giảm và quy tắc loại bỏ.
+- Ưu tiên giả thuyết có cơ sở (động lượng, co giãn biến động, quá đông vị thế qua funding/OI, thanh khoản) hơn mẫu hình
+  tìm ra bằng cách quét dữ liệu. Mẫu hình "nhìn bằng mắt" (vai-đầu-vai, cờ...) chỉ đưa vào khi định nghĩa được bằng
+  thuật toán và qua kiểm định như mọi hook khác.
 
-## Bối cảnh kỹ thuật cần biết
-- Windows, Python 3.13 trong `.venv` quản lý bằng **uv** (không có pip):
-  `uv pip install --python .venv/Scripts/python.exe -r requirements-dev.txt -e .`
-  CLI: `.venv/Scripts/freqtrade.exe`, lint `.venv/Scripts/ruff.exe` (0.16.8), `.venv/Scripts/mypy.exe` (2.3.1).
-- Thư viện: `requirements.txt` = **mọi thứ để chạy bot** (gồm hyperopt, plot); `requirements-dev.txt` = công cụ dev,
-  include `requirements.txt`. `pyproject.toml` liệt kê dependencies chính (gồm `freqtrade-client`, `plotly`).
-  `.venv` đã được dọn: gỡ 94 gói thừa (torch, jupyter, tensorboard...), `pip-audit` sạch lỗ hổng.
-- Chuẩn file text: UTF-8 không BOM + LF; `*.ps1` UTF-8 có BOM + CRLF (`.gitattributes`, `.editorconfig`).
-  Trước mỗi commit chạy `.venv/Scripts/python.exe scripts/format_code.py`. Git hook pre-commit đã cài: commit chạy
-  ruff, mypy, codespell (bỏ qua file tiếng Việt), kiểm tra encoding; push kiểm tra encoding toàn repo.
-  Hook fail = sửa rồi commit lại, **không** dùng `--no-verify`.
-- Tài liệu: `docs/trim-log.md` (mọi thứ đã cắt + lý do), `docs/structure.md` (bản đồ code), `docs/lifecycle.md` (logic engine),
-  `docs/signal-bot-workflow.md` (thiết kế bot).
-- **mypy bật `ignore_missing_imports = true` → không bắt được import tới module đã xóa.** Luôn chạy
-  `.venv/Scripts/python.exe .claude/skills/trim-core/check_imports.py` (quét cả import lười trong hàm).
-  Script chưa kiểm tra *tên* import từ module còn tồn tại (vd `from freqtrade.exchange import Bybit`) — kiểm thêm bằng test/CLI.
-- Phân tích phụ thuộc trước khi xóa: `.venv/Scripts/python.exe .claude/skills/trim-core/find_importers.py <module>`.
-- Bẫy đã gặp (2 lần): `git add <đường dẫn đã git rm>` báo `pathspec` và **cả lệnh không chạy** → dùng `git add -u` +
-  `git add <file mới>`, luôn xem `git status --short` trước khi commit. Python `write_text` trên Windows ghi CRLF — dùng `newline="\n"`.
-- `aiodns`/`pycares` đã bị gỡ khỏi `.venv` có chủ đích (pycares 5 lỗi DNS trên Windows → ccxt báo `ExchangeNotAvailable`).
-  Không cài lại; sau mỗi lần `uv pip install` kiểm tra nó không bị kéo về.
-- Trạng thái test hiện tại: `pytest tests -n auto --ignore=tests/exchange_online` → **3.491 pass, 0 fail** (xanh hoàn toàn).
-  Đã sửa 2 lỗi môi trường cũ: `/sysinfo` không crash khi Windows tắt performance counter (fallback load = 0);
-  `test_startup_time` tự tìm `freqtrade` cạnh interpreter và nới ngưỡng khi pytest-xdist chạy song song.
+## Luật bắt buộc
+- Đọc `CLAUDE.md`, `.claude/rules/` (gồm `quant-strategy.md`). Trả lời bằng **tiếng Việt**.
+- Commit trên `develop`, message tiếng Anh (Conventional Commits), **không** có `Co-Authored-By`/ghi công AI.
+  **Không push**, không PR. Kiểm tra trước commit bằng `.venv/Scripts/python.exe scripts/gate.py`, commit theo skill `/commit`.
+- Luôn `dry_run: true`; không secret trong code/docs; không sửa core `freqtrade/` (nếu thật cần → hỏi trước).
+- **Repo công khai**: tham số/ngưỡng riêng, kết quả nghiên cứu, danh sách hook đã kiểm chứng là tài sản riêng → để trong
+  `user_data/` (gitignore) trừ khi người dùng đồng ý commit. Báo cáo lưu `user_data/reports/` (không commit).
+- Tiết kiệm token: chỉ đọc mục liên quan của `docs/*.md`; output lớn ghi ra file rồi đọc phần cần; dùng gate.py.
 
-## Nhiệm vụ
+## Hiện trạng source & dữ liệu (đã kiểm tra 2026-10-10 — xác minh lại trước khi dựa vào)
+- Engine chỉ còn họ Binance. Đã xóa: FreqAI, plot, orderflow (dữ liệu trades/delta), edge, external consumer.
+  **Không thêm lại**. Nếu cần ML → module riêng trong `user_data/` hoặc script nghiên cứu, thư viện nhẹ.
+- Dữ liệu engine có: `CandleType` = futures, mark, index, premiumIndex, funding_rate, open_interest
+  (Binance chỉ giữ ~30 ngày lịch sử OI). DataProvider: `get_pair_dataframe`, `get_analyzed_dataframe`, `funding_rate`,
+  `orderbook`, `ticker`, `send_msg`; khung phụ qua `@informative`. OHLCV của ccxt chỉ có 6 cột (không có taker buy volume).
+- Thư viện có sẵn: pandas 3.0.6, numpy 2.4.6, scipy 1.17.1, TA-Lib 0.8.0, technical 1.7.0, optuna 5.0.0.
+  **Không có** scikit-learn (đã gỡ vì không dùng), statsmodels, hmmlearn, lightgbm. Thêm thư viện: nêu lý do →
+  `uv pip install --python .venv/Scripts/python.exe ...` → thêm vào requirements → `pip-audit` sạch.
+  Không dùng torch/deep learning.
+- Dữ liệu local: chỉ BTC/ETH **spot** 1h/5m. **Chưa có dữ liệu futures** → cần tải
+  (`download-data --config user_data/config_futures.json --timeframes 1h 4h --timerange 20221101-`, thêm
+  `--candle-types funding_rate mark index` nếu cần).
+- Thiết kế hiện có: `docs/signal-bot-workflow.md` (trend-following 1h/4h, điểm tín hiệu 0–100, cổng rủi ro, ngưỡng
+  kiểm chứng mục 7). `FuturesSignalStrategy` chưa viết. Công cụ: `lookahead-analysis`, `recursive-analysis`,
+  backtesting, skill `/validate-strategy`.
 
-### 0. Nghiên cứu lại source (làm trước, chưa sửa gì)
-1. Đọc `README.md`, `CLAUDE.md`, `docs/structure.md`, `docs/lifecycle.md`, `docs/trim-log.md`.
-2. Đối chiếu tài liệu với code thật: cây thư mục, lệnh CLI còn lại (`freqtrade --help`), các luồng chính
-   (khởi động → `process()` → vào/thoát lệnh → Telegram/API), số dòng/file mỗi package.
-3. Lập bảng "tài liệu nói X — code thực tế Y" cho mọi chỗ lệch, và xác minh lại từng phát hiện ở mục 1–5 bên dưới.
-4. Báo cáo ngắn gọn cho người dùng trước khi bắt đầu xóa/sửa.
+## Câu hỏi nghiên cứu phải trả lời
+1. **Kiến trúc**: đề xuất các lớp và ranh giới:
+   - Features: chỉ số; cấu trúc nến (thân/râu, range so với ATR, gap); hành vi giá (swing, phá vỡ, nhịp hồi,
+     co giãn biến động); phái sinh (funding, basis mark-index/premiumIndex, OI); bối cảnh BTC.
+   - Regime: trạng thái thị trường (xu hướng/đi ngang/biến động cao/sốc) cho BTC và từng cặp.
+   - Hooks/Playbook: các "kinh nghiệm" có tên.
+   - Assessment: tổng hợp → nhận định xác suất + kịch bản + mức vô hiệu.
+   - Journal: ghi và chấm điểm.
+2. **Định nghĩa hook**: interface Python gồm tên, phiên bản, giả thuyết, feature/khung cần dùng, `condition(df)` chỉ
+   dùng nến đã đóng, hướng, horizon, điều kiện vô hiệu, trạng thái (`candidate`/`active`/`retired`), ≤ 3 tham số.
+   Registry và cách đánh phiên bản (đổi logic = phiên bản mới, giữ thống kê cũ).
+3. **Đo "kinh nghiệm" (event study)**:
+   - Với mỗi lần hook kích hoạt: phân phối lợi suất tương lai ở nhiều horizon (ví dụ 1/4/12/24 nến 1h), chuẩn hóa theo
+     ATR (R); nhãn triple-barrier (TP = k·ATR, SL = m·ATR, giới hạn thời gian); MFE/MAE.
+   - So với baseline cùng regime → **lift**. Khoảng tin cậy bằng block bootstrap (vì tự tương quan và nhãn chồng lấp).
+   - Đặt số mẫu tối thiểu; hiệu chỉnh kiểm định đa giả thuyết (Benjamini–Hochberg hoặc tương đương); kiểm tra
+     độ ổn định theo năm, theo cặp, theo regime; tính sau phí 0,06%/chiều.
+4. **Regime**:
+   - Bắt đầu bằng luật minh bạch: độ dốc EMA/ADX, percentile biến động thực, trạng thái BTC. Kiểm tra các regime có
+     thật sự khác nhau về lợi suất/biến động tương lai không.
+   - Chỉ thử mô hình thống kê (HMM 2–3 trạng thái, clustering) nếu luật không đủ.
+   - **Bắt buộc causal**: chỉ lọc tiến (filtering). Không dùng Viterbi/smoothing trên toàn chuỗi, vì đó là lookahead.
+5. **Tổng hợp nhận định**:
+   - Cách kết hợp nhiều hook thành xác suất: đếm có trọng số, logistic đơn giản hoặc cập nhật Bayes.
+   - Hiệu chuẩn bằng Brier, log loss, reliability diagram và **skill score so với base rate**.
+   - Meta-labeling (mô hình thứ hai quyết định có tin hook hay không) chỉ là bước sau.
+6. **Kiểm chứng trên dữ liệu mới**:
+   - Walk-forward cuốn chiếu có purge + embargo theo horizon của nhãn.
+   - Holdout cuối chỉ chạy **một lần**; ghi hash của danh sách hook và tham số trước khi chạy.
+   - Thiết kế forward journal: schema, chỗ lưu (sqlite/parquet trong `user_data/`), job chấm điểm.
+   - Theo dõi drift: hit rate và Brier cuốn chiếu; quy tắc retire hook.
+7. **Tích hợp Freqtrade** (không sửa core): so sánh hai cách rồi chọn một.
+   - (a) Tính feature/regime trong `populate_indicators` (informative 4h + BTC), gửi nhận định qua `dp.send_msg`
+     chỉ khi có nến mới và chỉ ở live/dry-run.
+   - (b) Chạy nghiên cứu ngoài engine bằng script đọc file feather; engine chỉ dùng hook đã được duyệt.
+   - Quan hệ với tín hiệu: nhận định trở thành tầng ngữ cảnh/bộ lọc cho `signal-bot-workflow.md`.
+8. **Dữ liệu phái sinh lịch sử ngắn**:
+   - Binance chỉ giữ ~30 ngày cho OI, long/short ratio, taker buy/sell volume (endpoint public futures data, gọi qua
+     ccxt implicit API, không cần key). Xác minh endpoint và giới hạn.
+   - Đề xuất **collector** tự lưu dữ liệu này từ bây giờ, vì càng bắt đầu muộn càng ít lịch sử để kiểm định.
+   - Nghiên cứu cho thấy các số liệu này yếu khi đứng riêng, có ích hơn khi kết hợp (funding + OI + giá) → kiểm định,
+     không tin mặc định.
+9. **Rủi ro thống kê**: data snooping, survivorship (danh sách cặp cố định), không dừng (non-stationary), nhãn chồng
+   lấp, look-ahead, phí/trượt giá, đứt gãy regime. Mỗi rủi ro → biện pháp cụ thể trong thiết kế.
 
-### 1. Dọn tàn dư (làm luôn, mỗi nhóm một commit)
-1. **FreqAI còn sót ~118 chỗ trong 18 file** (`git grep -ci freqai -- freqtrade`): `config_schema` (mục `freqai`),
-   `config_validation` (`_validate_freqai_*`), `strategy/interface.py` (`feature_engineering_*`, `set_freqai_targets`,
-   `DummyClass`, `ft_bot_cleanup`), `dataprovider.get_required_startup`, `exchange.validate_freqai`, `backtesting`,
-   `optimize/analysis/lookahead*`, `recursive`, `api_schemas.BacktestFreqAIInputs`, `api_pair_history`, `api_backtest`,
-   `optimize_reports`, `constants.USERPATH_FREQAIMODELS`, `directory_operations`, `pairlist_helpers`,
-   `user_data/freqaimodels/.gitkeep` (đang được git theo dõi), thư mục rỗng `tests/freqai/` (chỉ còn `__pycache__`).
-   → Gỡ sạch, giữ một kiểm tra duy nhất: config có `freqai.enabled = true` → báo lỗi rõ ràng.
-2. **Tàn dư sàn đã xóa**: `configuration/deploy_config.py` (wizard `new-config` vẫn cho chọn bingx, gate, htx, kraken,
-   kucoin, okx...), `templates/subtemplates/exchange_{bittrex,gateio,huobi,kraken,kucoin,okex}.j2`,
-   `exchange/common.py` (xử lý riêng KuCoin 429 trong `retrier_async`), `leverage/interest.py` (nhánh kraken).
-3. **Margin trading**: Binance trong Freqtrade chỉ hỗ trợ spot + futures. Rà code/test margin (27 chỗ trong test,
-   chủ yếu `tests/exchange/test_exchange.py`, `tests/conftest.py`): bỏ nhánh riêng của sàn đã xóa; giữ logic engine chung
-   nếu xóa gây rủi ro — ghi rõ quyết định vào `docs/trim-log.md`.
+## Kết quả cần giao (deliverables)
+1. **Báo cáo nghiên cứu** (`user_data/reports/market-context-research.md`): tóm tắt tài liệu kèm nguồn (regime
+   detection, triple-barrier/meta-labeling, purged CV, calibration, bằng chứng về funding/OI/basis), và kết luận
+   áp dụng vào bot này.
+2. **Bảng kiểm kê feature**: feature → nguồn dữ liệu → độ dài lịch sử → độ trễ → dùng được trong backtest không →
+   chi phí tính.
+3. **Tài liệu thiết kế** `docs/market-context-engine.md`: kiến trúc, interface hook, event study, regime, assessment,
+   journal, kiểm chứng, tích hợp, lộ trình. Chỉ phần generic; ngưỡng riêng để trong `user_data/`.
+4. **Prototype tối thiểu** (vị trí do người dùng chọn):
+   - Engine event study + registry hook + **3–5 hook mẫu chọn từ lý thuyết** (không mò từ dữ liệu), chạy trên dải IS
+     2023-01 → 2025-06 cho 10–20 cặp thanh khoản cố định.
+   - Báo cáo kết quả thật, kể cả âm.
+   - Test tự động cho tính causal: giá trị hook tại t không đổi khi thêm dữ liệu sau t.
+5. **Plan các phase tiếp theo** với tiêu chí go/no-go rõ ràng; cập nhật `docs/signal-bot-workflow.md` (lộ trình,
+   quan hệ nhận định ↔ tín hiệu).
 
-### 2. Xóa tính năng ngoài phạm vi bot tín hiệu (ĐÃ CHỐT: xóa hết)
-Dùng `/trim-core`, **mỗi tính năng một commit**, chạy cổng kiểm chứng sau mỗi commit.
-Kết quả phân tích phụ thuộc ban đầu — xác minh lại trước khi xóa:
+## Ngưỡng khởi điểm (đề xuất lại nếu có lý do)
+- Hook được `active` khi:
+  - ≥ 200 sự kiện IS;
+  - lift so với baseline có CI 95% không chứa 0 sau hiệu chỉnh đa kiểm định;
+  - cùng dấu ở ≥ 2/3 số năm và ≥ 60% số cặp;
+  - vẫn dương sau phí 0,12% khứ hồi.
+- Assessment: Brier skill score > 0 so với base rate trên walk-forward OOS; reliability lệch ≤ 5 điểm %.
+- Forward journal: ≥ 4 tuần và ≥ 300 nhận định trước khi dùng làm bộ lọc tín hiệu.
+- Retire hook: skill cuốn chiếu 60 ngày < 0 có ý nghĩa thống kê.
 
-| # | Tính năng | Phần xóa | Chỗ phải sửa / lưu ý |
-|---|---|---|---|
-| 1 | Discord | `rpc/discord.py` (60 dòng) | Import lười trong `rpc/rpc_manager.py:37`; test discord trong `tests/rpc/test_rpc_webhook.py`; mục `discord` trong `config_schema` |
-| 2 | Producer/Consumer (phía consumer) | `rpc/external_message_consumer.py` (393 dòng), `plugins/pairlist/ProducerPairList.py` (109), `tests/rpc/test_rpc_emc.py` | Import cấp module trong `freqtradebot.py:55` (khởi tạo `self.emc`, `cleanup`); hàm consumer trong `data/dataprovider.py` (`_add_external_df`, `get_producer_df`, `get_producer_pairs`...); mục `external_message_consumer` trong `config_schema`; `AVAILABLE_PAIRLISTS` trong `constants.py`. **GIỮ** `rpc/api_server/api_ws.py` + `ws/` + `ws_schemas.py`: FreqUI dùng WebSocket này để cập nhật realtime |
-| 3 | `MarketCapPairList`, `CrossMarketPairList` | 249 + 132 dòng | `AVAILABLE_PAIRLISTS`; test trong `tests/plugins/test_pairlist.py`. **GIỮ** `util/coin_gecko.py` + `pycoingecko`: `rpc/fiat_convert.py` (đổi lãi/lỗ sang USD) đang dùng |
-| 4 | strategy-updater | `strategy/strategyupdater.py` (277), `commands/strategy_utils_commands.py`, `tests/test_strategy_updater.py` | Subcommand `strategy-updater` trong `commands/arguments.py`, `commands/__init__.py`, `cli_options.py`; gói `ast-comments` trong `requirements.txt`/`pyproject.toml` nếu chỉ module này dùng |
-| 5 | Plot | `plot/` (720 dòng), `commands/plot_commands.py`, `tests/test_plotting.py` | Subcommand `plot-dataframe`/`plot-profit` + tham số CLI; `plotly` trong `requirements.txt` và `pyproject.toml` (đã ghi chú "remove together with the plot module"). **GIỮ** `strategy.plot_config` + endpoint `/plot_config` (FreqUI vẽ chỉ báo) và `data/btanalysis` (báo cáo backtest) |
-| 6 | Orderflow | `data/converter/orderflow.py` (265), `tests/data/test_converter_orderflow.py` | Import cấp module trong `data/converter/__init__.py:13`; luồng `use_public_trades` / `orderflow` trong `dataprovider`, `exchange.py` (refresh trades), `config_schema`, `exchange.validate_orderflow` + test. **GIỮ** tải trade lịch sử (`download-data --dl-trades`, `trades-to-ohlcv`) nếu không phụ thuộc orderflow |
-| 7 | `ft_client` | `ft_client/` (65 KB, package `freqtrade-client` riêng), `scripts/rest_client.py`, `scripts/ws_client.py` | Bỏ `freqtrade-client` khỏi dependencies trong `pyproject.toml`; `git grep -n "freqtrade_client\|ft_client"` (Dockerfile, `MANIFEST.in`, test, `.dockerignore`). Giữ `scripts/binance_update_lev_tiers.py` |
-| 8 | Lệnh `edge` | `start_edge` + subcommand `edge` (chỉ còn báo lỗi "đã gỡ") | `commands/arguments.py`, `commands/optimize_commands.py`, `commands/__init__.py`, test lệnh `edge` |
+## Quyết định cần hỏi người dùng (AskUserQuestion, trong plan mode)
+- Code nghiên cứu và knowledge base đặt ở đâu: `user_data/` (riêng tư) hay `scripts/research/` (công khai)?
+- Thư viện được thêm (ví dụ statsmodels/scikit-learn/hmmlearn) hay chỉ dùng numpy/scipy/pandas?
+- Danh sách cặp, khoảng dữ liệu, và có dựng collector OI/long-short/taker volume ngay không?
+- Kênh xuất nhận định: tin Telegram riêng, tổng hợp theo giờ, hay chỉ ghi journal ở giai đoạn đầu?
 
-Sau đợt xóa: chạy lại `check_imports.py`; gỡ khỏi `requirements.txt`/`pyproject.toml` mọi thư viện không còn ai import
-(kiểm bằng `git grep`), rồi `uv pip install` lại và chạy `pip-audit`; cập nhật `docs/trim-log.md` (mỗi tính năng một dòng),
-`docs/structure.md`, `docs/lifecycle.md` (mục Producer/Consumer, danh sách pairlist), `README.md`.
-`vendor/qtpylib` không nằm trong danh sách này — giữ nguyên. `MANIFEST.in` chỉ cần cho đóng gói wheel — đề xuất giữ/xóa.
+## Không làm trong phiên này
+- Không viết `FuturesSignalStrategy` hoàn chỉnh, không bật Telegram thật, không đổi `dry_run`.
+- Không thêm lại FreqAI, không deep learning, không hyperopt hàng loạt tham số hook.
+- Không chạy holdout OOS nhiều lần; không chọn giai đoạn đẹp để báo cáo.
 
-### 3. Test thừa
-- Test của các tính năng xóa ở mục 2 (đi kèm từng commit xóa).
-- Test còn dính FreqAI: `test__validate_freqai_include_timeframes`, `test_freqai_not_initialized`, mock torch trong `tests/conftest.py`
-  (torch đã bị gỡ khỏi `.venv`).
-- `tests/exchange_online/` (CI không chạy, chỉ còn Binance): đề xuất giữ (chạy tay khi nâng cấp ccxt) hoặc xóa.
-- Tham số test margin / sàn đã xóa còn sót.
-
-### 4. Test thiếu (bổ sung)
-1. FreqAI bị gỡ: config bật `freqai.enabled` → `OperationalException` rõ ràng.
-2. CLI: `convert-trade-data --format-from` không còn `kraken_csv`; `list-freqaimodels` và các lệnh vừa xóa không còn hợp lệ;
-   `new-config` chỉ đề xuất Binance (sau khi sửa mục 1.2).
-3. Công cụ dự án (đặt test trong `tests/tools/`): `.claude/hooks/ruff_fix.py` (đường dẫn tương đối, khác chữ hoa ổ đĩa),
-   `.claude/skills/validate-strategy/summarize_backtest.py` (R-multiple, drawdown R, ngưỡng PASS/FAIL với dữ liệu giả),
-   `.claude/skills/trim-core/check_imports.py`, `scripts/format_code.py`. (`scripts/check_encoding.py` đã có 26 test.)
-4. Đường đi quan trọng của bot Binance Futures (dry-run): isolated margin, đòn bẩy, `stoploss_on_exchange`, thoát một phần
-   (`adjust_trade_position`), `custom_stoploss(after_fill)`, funding fee, cảnh báo thanh lý, `dp.send_msg` → Telegram.
-   Chạy `pytest --cov=freqtrade --cov-report=term-missing` và báo các module liên quan có độ phủ < 70% kèm đề xuất test.
-
-### 5. Hạ tầng triển khai (ghi nhận, sửa nếu đơn giản)
-- `docker-compose.yml` đang dùng image `freqtradeorg/freqtrade:stable` + `SampleStrategy` của upstream → phải build từ `Dockerfile` của repo.
-- `run.ps1` còn cấu hình spot/5m/`MyStrategy`/BNB/30 ngày → cập nhật cho futures theo `docs/signal-bot-workflow.md`.
-- Đã xong (không cần làm lại): gộp requirements, xóa `setup.sh`/`setup.ps1`/`.pylintrc`/systemd unit, dọn `.gitignore`/`.dockerignore`.
-
-## Cổng kiểm chứng (bắt buộc sau mỗi commit có sửa code)
-```bash
-.venv/Scripts/python.exe .claude/skills/trim-core/check_imports.py      # 0 problem
-.venv/Scripts/python.exe scripts/check_encoding.py --all              # 0 problem(s) remaining
-.venv/Scripts/ruff.exe check freqtrade tests scripts && .venv/Scripts/ruff.exe format --check freqtrade tests scripts
-.venv/Scripts/mypy.exe freqtrade                                         # no issues
-.venv/Scripts/python.exe -m pytest tests -q -n auto -p no:cacheprovider --ignore=tests/exchange_online
-.venv/Scripts/freqtrade.exe --version && .venv/Scripts/freqtrade.exe list-strategies --config user_data/config.json
-```
-Bộ test phải xanh hoàn toàn (0 fail) → có fail thì sửa trước khi commit tiếp.
-
-## Kết quả cần trả về
-1. Báo cáo nghiên cứu (mục 0): bảng lệch giữa tài liệu và code.
-2. Bảng phát hiện: hạng mục | bằng chứng (file:dòng) | mức độ | đã xử lý / chờ quyết định.
-3. Những điểm phát sinh cần người dùng quyết định (nếu có), mỗi điểm kèm đề xuất và ảnh hưởng.
-4. Danh sách commit đã tạo (hash + message) và số commit `develop` đang đi trước `origin/develop`.
-5. Kết quả cổng kiểm chứng cuối: số test pass/fail, độ phủ các module chính, `pip-audit`.
-6. Cập nhật `docs/trim-log.md`, `docs/structure.md` cho mọi thay đổi.
-
-**Ngoài phạm vi phiên này:** viết strategy tín hiệu, tải dữ liệu, backtest, triển khai VPS.
+## Tài liệu tham khảo khởi đầu (đã tra 2026-10-10, kiểm lại khi dùng)
+- López de Prado, *Advances in Financial Machine Learning*: triple-barrier, meta-labeling, purged/embargoed CV —
+  tóm tắt: https://www.tradinginterview.com/courses/machine-learning/lessons/labeling-the-triple-barrier-method-and-meta-labeling/ ,
+  https://www.luxalgo.com/library/concept/purged-cross-validation/
+- Regime crypto bằng path signatures trên basis perp-spot + funding (2026):
+  https://nhsjs.com/wp-content/uploads/2026/08/Path-Signatures-for-Regime-Detection-in-Cryptocurrency-Markets-A-Rough-Path-Framework-Using-Spot-Perpetual-Basis-and-Funding-Rates.pdf
+- Dự báo giá crypto bằng ML (tổng quan 2025): https://arxiv.org/pdf/2508.01419
+- Calibration / Brier decomposition: https://api.emergentmind.com/topics/brierlm
+- Long/short ratio + funding + OI chỉ hữu ích khi kết hợp: https://mudrex.com/learn/binance-ratio-avoid-bull-bear-traps/
