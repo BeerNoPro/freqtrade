@@ -39,8 +39,8 @@ jobs:
 
       - name: Ruff
         run: |
-          ruff check --output-format=github freqtrade tests
-          ruff format --check freqtrade tests
+          ruff check --output-format=github freqtrade tests scripts
+          ruff format --check freqtrade tests scripts
 
       - name: Tests
         run: |
