@@ -107,3 +107,27 @@ def test_remaining_lint_errors_are_reported(project, monkeypatch, capsys):
     monkeypatch.setattr(ruff_fix.subprocess, "run", fake_run)
     assert run_hook(monkeypatch, {"tool_input": {"file_path": str(root / "mod.py")}}) == 2
     assert "F821" in capsys.readouterr().err
+
+
+def test_unused_imports_are_left_alone_while_editing(project, monkeypatch):
+    root, calls = project
+    (root / "mod.py").write_text("import os\n")
+    assert run_hook(monkeypatch, {"tool_input": {"file_path": str(root / "mod.py")}}) == 0
+    check_cmd = calls[1][0]
+    assert check_cmd[:3] == ["ruff", "check", "--fix"]
+    # F401/F841 are ignored, so --fix cannot delete an import that is about to be used
+    assert check_cmd[check_cmd.index("--ignore") + 1] == "F401,F841"
+
+
+def test_unused_import_survives_real_ruff(tmp_path, monkeypatch):
+    ruff = ruff_fix.find_ruff()
+    if ruff is None:
+        pytest.skip("ruff is not installed in .venv")
+    monkeypatch.setattr(ruff_fix, "PROJECT_DIR", tmp_path)
+    monkeypatch.setattr(ruff_fix, "find_ruff", lambda: ruff)
+    target = tmp_path / "mod.py"
+    target.write_text("import os\n\n\ndef f():\n    unused = 1\n")
+    assert run_hook(monkeypatch, {"tool_input": {"file_path": str(target)}}) == 0
+    content = target.read_text()
+    assert "import os" in content
+    assert "unused = 1" in content

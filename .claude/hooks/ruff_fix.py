@@ -3,6 +3,10 @@
 Reads the hook payload from stdin, runs `ruff format` and `ruff check --fix` on the
 edited file, and reports remaining lint errors back to Claude (exit code 2) so they
 get fixed in the same turn. Never blocks on its own failures.
+
+Unused imports/variables (F401, F841) are ignored here: during a multi-step edit an
+import is often added before the code that uses it, and `--fix` would delete it.
+The pre-commit ruff hook and scripts/format_code.py still enforce them at commit time.
 """
 
 import json
@@ -13,6 +17,8 @@ from pathlib import Path
 
 
 PROJECT_DIR = Path(os.environ.get("CLAUDE_PROJECT_DIR", Path(__file__).resolve().parents[2]))
+# Rules that are normal in a half-finished edit - checked at commit time instead
+EDIT_TIME_IGNORE = "F401,F841"
 
 
 def find_ruff() -> str | None:
@@ -50,7 +56,17 @@ def main() -> int:
 
     subprocess.run([ruff, "format", "--quiet", target], cwd=PROJECT_DIR, check=False)
     result = subprocess.run(
-        [ruff, "check", "--fix", "--quiet", target],
+        [
+            ruff,
+            "check",
+            "--fix",
+            "--quiet",
+            "--output-format",
+            "concise",
+            "--ignore",
+            EDIT_TIME_IGNORE,
+            target,
+        ],
         cwd=PROJECT_DIR,
         capture_output=True,
         text=True,
