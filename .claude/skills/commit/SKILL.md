@@ -38,7 +38,13 @@ Luật đầy đủ: `.claude/rules/git-workflow.md`. Làm lần lượt, dừng
 - Dùng gợi ý trong `$ARGUMENTS` (nếu có) làm định hướng nội dung.
 
 ## 5. Commit
-- `git status --short` rồi `git commit -F -` với message ở bước 4. Hook pre-commit fail → sửa, không `--no-verify`.
+- `git status --short` rồi commit, lọc bỏ các dòng hook đã qua (chỉ còn lỗi nếu có):
+  ```bash
+  git commit -q -F - <<'EOF' 2>&1 | grep -v -E "Passed$|Skipped$|^\[INFO\]|^\[WARNING\] Unstaged"
+  <message ở bước 4>
+  EOF
+  ```
+  Hook pre-commit fail → sửa, không `--no-verify`.
 - In ra `git log --oneline -1`.
 
 ## 6. Không push
