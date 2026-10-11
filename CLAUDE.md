@@ -12,6 +12,7 @@ Engine là Freqtrade 2026.9 (GPLv3, giữ `LICENSE` + `NOTICE`). Logic riêng n�
 |---|---|
 | [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md) | **Thiết kế bot**: workflow, công thức, tin nhắn, ngưỡng kiểm chứng, lộ trình |
 | [docs/market-context-engine.md](docs/market-context-engine.md) | **Nhận định thị trường**: hook, event study, regime, journal (code `scripts/research/mce/`) |
+| [docs/huong-dan-nhan-dinh-thi-truong.md](docs/huong-dan-nhan-dinh-thi-truong.md) | Bản giải thích dễ hiểu của hệ thống nhận định (cho người không chuyên quant) |
 | [docs/lifecycle.md](docs/lifecycle.md) | Logic chạy của engine (đã đối chiếu code) |
 | [docs/structure.md](docs/structure.md) | Bản đồ source, luồng → file |
 | [freqtrade/strategy/CLAUDE.md](freqtrade/strategy/CLAUDE.md), [freqtrade/optimize/CLAUDE.md](freqtrade/optimize/CLAUDE.md) | Ghi chú theo module |

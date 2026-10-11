@@ -4,6 +4,8 @@ Bộ máy **nhận định thị trường**: từ nến, chỉ số và dữ li
 mức vô hiệu*. Không đặt lệnh. Về sau, nhận định làm tầng ngữ cảnh/bộ lọc cho tín hiệu trong
 [signal-bot-workflow.md](signal-bot-workflow.md).
 
+Mới đọc lần đầu: xem bản giải thích dễ hiểu [huong-dan-nhan-dinh-thi-truong.md](huong-dan-nhan-dinh-thi-truong.md).
+
 Tài liệu này chỉ chứa phần generic. Hook cụ thể, ngưỡng riêng, kết quả nghiên cứu nằm trong `user_data/research/` và
 `user_data/reports/` (không commit).
 
