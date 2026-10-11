@@ -62,6 +62,10 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
 - **Bằng chứng:** yếu và không ổn định ở crypto lớn. Chủ yếu tồn tại ở tần suất rất cao, nơi cá nhân không cạnh
   tranh được.
 - **Bẫy:** **bẫy winrate**: thắng 55–60% số lần nhưng lỗ tổng vì lệnh thua lớn; nguy hiểm khi có đòn bẩy.
+- **Biến thể có cơ chế: hồi sau bán cưỡng bức.** Lệnh thanh lý không quan tâm giá, đẩy giá quá đà khi thanh khoản mỏng
+  (Brunnermeier & Pedersen 2009); người đứng ra nhận được trả phần bù khi giá hồi (Coval & Stafford 2007, quỹ bị rút vốn
+  phải bán; Nagel 2012, lợi suất hồi quy cao nhất khi thanh khoản cạn). Nhận diện bằng cú chạy lớn kèm OI sụt bất
+  thường. Bằng chứng trực tiếp trên crypto còn thiếu; sự kiện hiếm nên cần mẫu dài. Kiểm định trong repo: mục 10.
 
 ## 6. Lead-lag và ngữ cảnh BTC
 - **Cơ chế:** BTC dẫn dắt; coin nhỏ phản ứng trễ.
@@ -109,4 +113,5 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
 | Carry funding cắt ngang (long 1/3 funding thấp, short 1/3 funding cao, tái cân bằng tuần, dữ liệu 2025+) | Không đạt: phần funding thu được dương rõ nhưng phần giá âm gần tương đương, Sharpe quanh 0. Funding âm phản ánh xu hướng giảm đúng chứ không phải cơ hội đảo chiều |
 | Mô hình đa yếu tố 4h (logistic trên ~20 đặc trưng: động lượng, biến động, volume, funding, OI, tỷ lệ long/short, bối cảnh BTC; walk-forward; dữ liệu 2025+) | Không đạt: xác suất ngoài mẫu kém hơn tỷ lệ nền và quá tự tin; lợi nhuận nhỏ còn lại chủ yếu là beta phía short trong năm giảm, drawdown lớn. Dữ liệu vị thế gần như không đóng góp. Gộp nhiều tín hiệu yếu không tự tạo ra lợi thế dự báo hướng |
 | Động lượng cắt ngang trung lập beta (top-20 point-in-time, lợi suất 1–4 tuần, long 30% mạnh nhất / short 30% yếu nhất, chân co giãn để beta BTC = 0, giữ 7 ngày, dữ liệu 2025+) | Không đạt: thứ hạng không mang thông tin, phần giá đúng bằng trung vị danh mục chọn ngẫu nhiên. Coin thắng không thắng tiếp sau khi trừ beta; coin thua có giảm thêm nhưng bên short trả funding âm và bị squeeze, mất hết phần lãi. Bản trung lập đô la trông khá hơn chỉ nhờ rò beta |
+| Hook thanh lý 4h (cú chạy ≥ 2 ATR kèm OI sụt bất thường → đi ngược; top-20 point-in-time; dữ liệu 2025+) | Không đạt cổng ý nghĩa: ước lượng dương ở mọi horizon nhưng khoảng tin cậy rộng vì sự kiện hiếm và dồn theo các ngày sập chung; gần như toàn bộ là sập giá (thanh lý phe long). Cú sập không kèm OI sụt thì giảm tiếp, khác rõ cú sập có OI sụt → OI có thể tách bán cưỡng bức khỏi bán chủ động; cần kiểm lại trên mẫu khác. Vào trễ một nến thì mất phần hồi |
 | Bài học chung | Danh sách coin chọn theo hiện tại làm phồng Sharpe đáng kể, chủ yếu do chọn trúng coin sống sót tăng tốt chứ không phải do né coin chết. Kiểm định danh mục phải dùng danh mục point-in-time (`mce.universe`, `mce.archive`) |
