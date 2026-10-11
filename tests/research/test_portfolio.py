@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from mce.portfolio import (
+    block_bootstrap_sharpe,
     daily_funding,
     deflated_sharpe,
     metrics,
@@ -87,3 +88,15 @@ def test_metrics_and_deflated_sharpe() -> None:
     assert many["dsr"] < one["dsr"]
     noise = pd.Series(rng.normal(0, 0.02, 1460), index=idx)
     assert deflated_sharpe(noise, n_trials=20, sr_std_trials=0.03)["dsr"] < 0.5
+
+
+def test_block_bootstrap_sharpe() -> None:
+    rng = np.random.default_rng(2)
+    idx = pd.date_range("2020-01-01", periods=1460, freq="D", tz="UTC")
+    net = pd.Series(rng.normal(0.001, 0.02, 1460), index=idx)
+    a = block_bootstrap_sharpe(net, block=20, n_boot=500, seed=1)
+    assert a == block_bootstrap_sharpe(net, block=20, n_boot=500, seed=1)  # seeded
+    assert a["sharpe"] == pytest.approx(metrics(net)["sharpe"])
+    assert a["lo"] < a["sharpe"] < a["hi"]
+    # iid returns: annual Sharpe s.e. ~ sqrt(365 / 1460) = 0.5, so the 5-95% band is ~1.65 wide
+    assert 1.2 < a["hi"] - a["lo"] < 2.2

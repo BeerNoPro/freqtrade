@@ -106,6 +106,33 @@ def yearly_returns(net: pd.Series) -> pd.Series:
     return (1 + net).groupby(net.index.year).prod() - 1
 
 
+def block_bootstrap_sharpe(
+    net: pd.Series,
+    block: int = 20,
+    n_boot: int = 2000,
+    seed: int = 0,
+    quantiles: tuple[float, float] = (0.05, 0.95),
+) -> dict[str, float]:
+    """
+    Moving-block bootstrap of the annualised Sharpe ratio of daily returns. Blocks of ``block``
+    consecutive days keep volatility clustering and short autocorrelation inside each sample.
+    """
+    x = net.dropna().to_numpy()
+    t = len(x)
+    rng = np.random.default_rng(seed)
+    starts = rng.integers(0, t - block + 1, size=(n_boot, -(-t // block)))
+    idx = (starts[:, :, None] + np.arange(block)).reshape(n_boot, -1)[:, :t]
+    sample = x[idx]
+    boot = sample.mean(axis=1) / sample.std(axis=1, ddof=1) * np.sqrt(DAYS)
+    lo, hi = np.quantile(boot, quantiles)
+    return {
+        "sharpe": float(x.mean() / x.std(ddof=1) * np.sqrt(DAYS)),
+        "lo": float(lo),
+        "median": float(np.median(boot)),
+        "hi": float(hi),
+    }
+
+
 def deflated_sharpe(net: pd.Series, n_trials: int, sr_std_trials: float) -> dict[str, float]:
     """
     Deflated Sharpe Ratio (Bailey & Lopez de Prado, 2014) on daily returns.

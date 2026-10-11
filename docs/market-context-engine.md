@@ -42,8 +42,12 @@ Code nằm ở `scripts/research/mce/` (package `mce`):
 | `walkforward.py` | Chia walk-forward cuốn chiếu có purge + embargo |
 | `journal.py` | Forward journal sqlite: ghi nhận định, chấm điểm khi horizon đóng |
 | `collector.py` | Thu OI / long-short / taker volume (API chỉ giữ ~30 ngày) |
+| `archive.py` | Tải nến ngày + funding cho **mọi** perp USDT-M từng niêm yết, kể cả đã delist (liệt kê từ kho data.binance.vision) |
+| `universe.py` | Danh sách cố định `DEFAULT_PAIRS`; danh mục point-in-time (top-N theo trung vị quote volume, chỉ dùng dữ liệu đến ngày đó) |
+| `portfolio.py` | Backtester danh mục theo trọng số mục tiêu khung ngày, phí, funding, Deflated Sharpe, bootstrap khối Sharpe |
 
-CLI: `scripts/research/run_event_study.py`, `scripts/research/collect_derivs.py`.
+CLI: `scripts/research/run_event_study.py`, `scripts/research/collect_derivs.py`,
+`scripts/research/download_pit_universe.py` (dữ liệu cho danh mục point-in-time, ghi vào `user_data/research/pit/`).
 
 ### Quy ước căn thời gian (row t = nến 1h mở lúc t, quyết định lúc đóng t+1h)
 | Nguồn | Cách ghép |
