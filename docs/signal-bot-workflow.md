@@ -195,6 +195,7 @@ File sẽ tạo/sửa (đều trong `user_data/`, không đụng core):
 
 | Bước | Việc | Ai làm |
 |---|---|---|
+| 0 | **Chiến lược nền** trend-following khung 4h (kênh Donchian + lọc xu hướng ngày + BTC, tham số kinh điển, không tối ưu). Đây là mốc so sánh: mọi setup 1h ở mục 3 chỉ được giữ nếu thắng chiến lược nền trên cùng dải dữ liệu, sau phí và khi vào trễ 1 nến. So thêm với mua và giữ cùng danh mục | Claude |
 | 1 | Code strategy + config + tin nhắn | Claude |
 | 2 | Tải dữ liệu, chạy lookahead/recursive, backtest, báo cáo kết quả thật | Claude |
 | 3 | Tinh chỉnh (ít tham số), kiểm tra lần cuối trên dữ liệu giữ lại | Claude + bạn duyệt |
