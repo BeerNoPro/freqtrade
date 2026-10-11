@@ -78,8 +78,11 @@ def test_monthly_holds_and_drops_delisted() -> None:
 def test_symbol_helpers() -> None:
     assert pair_to_symbol("BTC/USDT:USDT") == "BTCUSDT"
     assert pair_to_symbol("1000PEPE/USDT:USDT") == "1000PEPEUSDT"
-    assert is_candidate("LUNAUSDT") and is_candidate("1000SHIBUSDT")
-    assert not is_candidate("USDCUSDT") and not is_candidate("BTCDOMUSDT")
+    assert is_candidate("LUNAUSDT") and is_candidate("1000SHIBUSDT", "COIN", ["Meme", "Crypto"])
+    assert not is_candidate("USDCUSDT", "COIN", ["Crypto"])  # stablecoin tagged COIN
+    assert not is_candidate("BTCDOMUSDT", "INDEX", ["Index", "Crypto"])
+    assert not is_candidate("TSLAUSDT", "EQUITY", ["TradFi"])
+    assert not is_candidate("OPENAIUSDT", "PREMARKET", ["Pre-IPO", "TradFi"])
     assert not is_candidate("BTCUSDT_250627") and not is_candidate("ETHBTC")
 
 

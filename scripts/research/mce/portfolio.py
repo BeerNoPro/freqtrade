@@ -38,6 +38,39 @@ def daily_funding(funding: pd.DataFrame, index: pd.DatetimeIndex) -> pd.DataFram
     return funding.groupby(key).sum().reindex(index).fillna(0.0)
 
 
+def funding_known_at_close(funding: pd.DataFrame, index: pd.DatetimeIndex) -> pd.DataFrame:
+    """
+    Funding printed during daily row D, i.e. in (D 00:00, D+1 00:00], summed per day: known at
+    the close of row D, so usable in a signal decided at that close. NaN on days without prints.
+    (``daily_funding`` is the funding paid afterwards, while holding.)
+    """
+    key = funding.index.ceil("D") - pd.Timedelta(days=1)
+    return funding.groupby(key).sum(min_count=1).reindex(index)
+
+
+def quantile_long_short(
+    signal: pd.DataFrame,
+    members: pd.DataFrame,
+    rebalance: np.ndarray,
+    quantile: float = 1 / 3,
+    gross: float = 1.0,
+) -> pd.DataFrame:
+    """
+    Dollar-neutral target weights. On rows where ``rebalance`` is True, among members with a
+    signal: short the top ``quantile``, long the bottom ``quantile``, equal weight, ``gross / 2``
+    per leg. Weights are held until the next rebalance; a position whose coin leaves
+    ``members`` (delisted, out of the universe) is closed that day and not replaced.
+    """
+    sig = signal.where(members)
+    k = np.floor(sig.notna().sum(axis=1) * quantile)
+    per_name = (gross / 2 / k).replace(np.inf, 0.0)
+    short = sig.rank(axis=1, ascending=False, method="first").le(k, axis=0)
+    long = sig.rank(axis=1, ascending=True, method="first").le(k, axis=0)
+    target = long.astype(float).sub(short.astype(float)).mul(per_name, axis=0)
+    target.loc[~np.asarray(rebalance)] = np.nan
+    return target.ffill().fillna(0.0).where(members, 0.0)
+
+
 @dataclass
 class Result:
     daily: pd.DataFrame  # gross, fee, funding, net, equity, turnover, gross_exposure

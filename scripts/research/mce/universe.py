@@ -1,12 +1,15 @@
 """
 Research universes.
 
-``DEFAULT_PAIRS``: fixed list of liquid USDT-M perps listed before 2023 (selection made today,
-so a survivorship bias toward coins that are still large remains and must be reported).
+``DEFAULT_PAIRS``: fixed list of large USDT-M perps for collectors and quick single-pair studies.
+It was chosen today, so it carries survivorship bias: never use it for portfolio tests.
 
 ``point_in_time_members``: top-n by liquidity using only data available at each date, over a
-candidate list that includes delisted contracts (see ``mce.archive``).
+candidate list that includes delisted contracts (see ``mce.archive``). Use it for every
+portfolio or cross-sectional test.
 """
+
+from collections.abc import Iterable
 
 import numpy as np
 import pandas as pd
@@ -30,13 +33,13 @@ DEFAULT_PAIRS = [
     "NEAR/USDT:USDT",
 ]
 
-# Not crypto-asset exposure: excluded by asset class, never by results.
-# Binance TradFi perps (stocks, ETFs, pre-IPO) were listed from late 2025 and cannot meet a
-# 365-day history requirement inside the 2021-2025 research window; extend this set before
-# using the universe on later data.
+# Binance tags every perp with an underlying type (COIN, EQUITY, COMMODITY, INDEX, FX, PREMARKET)
+# and TradFi contracts also carry a "TradFi" subtype. These bases are not crypto exposure but are
+# tagged COIN, or are index contracts already removed from exchangeInfo. Excluded by asset class,
+# never by results.
 EXCLUDED_BASES = frozenset(
     {
-        # stablecoins and fiat
+        # stablecoins and fiat-pegged tokens
         "USDC",
         "BUSD",
         "TUSD",
@@ -45,23 +48,12 @@ EXCLUDED_BASES = frozenset(
         "DAI",
         "USDE",
         "USD1",
-        "USDBRL",
-        # index contracts
-        "BTCDOM",
-        "DEFI",
+        # tokenized gold
+        "PAXG",
+        "XAUT",
+        # index contracts no longer listed
         "FOOTBALL",
         "BLUEBIRD",
-        # commodities and tokenized commodities
-        "XAU",
-        "XAG",
-        "XAUT",
-        "PAXG",
-        "XPT",
-        "XPD",
-        "NATGAS",
-        "COPPER",
-        "CL",
-        "BZ",
     }
 )
 
@@ -71,9 +63,16 @@ def pair_to_symbol(pair: str) -> str:
     return pair.split(":")[0].replace("/", "")
 
 
-def is_candidate(symbol: str) -> bool:
-    """USDT-margined perpetual whose base is a crypto asset."""
-    return symbol.endswith("USDT") and "_" not in symbol and symbol[:-4] not in EXCLUDED_BASES
+def is_candidate(
+    symbol: str, underlying_type: str | None = None, subtypes: Iterable[str] = ()
+) -> bool:
+    """
+    USDT-margined perpetual on a crypto asset. ``underlying_type`` / ``subtypes`` come from
+    exchangeInfo; ``None`` means the contract was already removed from it (old crypto listings).
+    """
+    if not symbol.endswith("USDT") or "_" in symbol or symbol[:-4] in EXCLUDED_BASES:
+        return False
+    return underlying_type in (None, "COIN") and "TradFi" not in subtypes
 
 
 def point_in_time_members(

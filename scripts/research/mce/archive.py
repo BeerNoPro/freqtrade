@@ -95,6 +95,15 @@ def funding_to_frame(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame({"date": date, "funding_rate": rate})
 
 
+def underlying_types(exchange: ccxt.Exchange) -> dict[str, list]:
+    """Raw symbol -> [underlyingType, underlyingSubType] for USDT-settled swaps in exchangeInfo."""
+    return {
+        m["id"]: [m["info"].get("underlyingType"), m["info"].get("underlyingSubType") or []]
+        for m in exchange.load_markets().values()
+        if m.get("swap") and m.get("settle") == "USDT"
+    }
+
+
 def parse_archive_klines(text: str) -> pd.DataFrame:
     """Monthly archive kline CSV (header optional, open time in ms or us) -> klines_to_frame."""
     raw = pd.read_csv(io.StringIO(text), header=None, names=KLINE_COLS, dtype=str)
@@ -140,22 +149,39 @@ def _path(outdir: Path, kind: str, symbol: str) -> Path:
     return outdir / kind / f"{symbol}.parquet"
 
 
+def prune(outdir: Path, kind: str, keep: list[str], start: pd.Timestamp) -> int:
+    """Delete files of symbols not in ``keep`` and rows dated before ``start``. Returns files
+    deleted. Keeps the research store limited to the current candidates and data window."""
+    deleted = 0
+    for path in sorted((outdir / kind).glob("*.parquet")):
+        if path.stem not in keep:
+            path.unlink()
+            deleted += 1
+            continue
+        df = pd.read_parquet(path)
+        if len(df) and df["date"].min() < start:
+            df[df["date"] >= start].to_parquet(path, index=False)
+    return deleted
+
+
 def missing(outdir: Path, kind: str, symbols: list[str]) -> list[str]:
     """Symbols without a stored file of ``kind``."""
     return [s for s in symbols if not _path(outdir, kind, s).exists()]
 
 
-def sync_from_archive(symbol: str, outdir: Path, kind: str) -> int:
-    """Fallback for symbols the API rejects: rebuild ``kind`` from the monthly archive files."""
+def sync_from_archive(symbol: str, outdir: Path, kind: str, start: pd.Timestamp) -> int:
+    """Fallback for symbols the API rejects: rebuild ``kind`` from monthly archive files
+    (``<SYMBOL>-<kind>-YYYY-MM.zip``) of months from ``start`` on."""
     if kind == "klines_1d":
         prefix, parse = f"{KLINES_PREFIX}{symbol}/1d/", parse_archive_klines
     else:
         prefix, parse = f"{FUNDING_PREFIX}{symbol}/", parse_archive_funding
     path = _path(outdir, kind, symbol)
     old = pd.read_parquet(path) if path.exists() else pd.DataFrame()
-    frames = [parse(_zip_text(key)) for key in archive_zip_keys(prefix)]
+    keys = [k for k in archive_zip_keys(prefix) if k[-11:-4] >= start.strftime("%Y-%m")]
+    frames = [parse(_zip_text(key)) for key in keys]
     new = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    return _append(path, old, new)
+    return _append(path, old, new[new["date"] >= start] if len(new) else new)
 
 
 def _append(path: Path, old: pd.DataFrame, new: pd.DataFrame) -> int:

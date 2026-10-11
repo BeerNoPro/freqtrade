@@ -2,7 +2,7 @@
 Run an in-sample event study for a hooks module and write a markdown report.
 
     .venv/Scripts/python.exe scripts/research/run_event_study.py \
-        --hooks user_data/research/hooks_v1.py --start 2023-01-01 --end 2025-07-01
+        --hooks user_data/research/hooks_indicators_v1.py --start 2025-01-01 --end 2026-04-01
 
 The hooks module must expose ``REGISTRY`` (an ``mce.hooks.HookRegistry``).
 """
@@ -56,8 +56,8 @@ def main() -> None:
     parser.add_argument("--hooks", type=Path, required=True)
     parser.add_argument("--pairs", nargs="+", default=DEFAULT_PAIRS)
     parser.add_argument("--datadir", type=Path, default=Path("user_data/data/binance"))
-    parser.add_argument("--start", default="2023-01-01")
-    parser.add_argument("--end", default="2025-07-01", help="exclusive")
+    parser.add_argument("--start", default="2025-01-01")
+    parser.add_argument("--end", default="2026-04-01", help="exclusive")
     parser.add_argument("--out", type=Path, default=Path("user_data/reports"))
     parser.add_argument("--tag", default="IS-v1")
     parser.add_argument("--timeframe", default="1h", choices=["1h", "4h"])
