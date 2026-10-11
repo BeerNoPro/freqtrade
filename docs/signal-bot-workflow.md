@@ -67,6 +67,11 @@ Lựa chọn: **theo xu hướng, vào ở nhịp hồi (pullback) hoặc phá v
 
 ## 3. Công thức tín hiệu (giá trị khởi đầu)
 
+> **Ghi chú (2026-10):** mục 3–4 là thiết kế ban đầu cho tín hiệu khung 1h. Nghiên cứu sau đó cho thấy tín hiệu 1h
+> trên coin lớn bị phí ăn hết, và các bộ lọc kiểu RSI/pullback không tạo lợi thế. Hướng chính chuyển sang
+> **trend-following khung ngày theo danh mục** (ensemble kênh Donchian + định cỡ theo biến động), xem
+> [quant-playbook.md](quant-playbook.md) mục 1–2. Phần dưới giữ lại để tham khảo cách thiết lập lệnh và tin nhắn.
+
 ### 3.1 Xu hướng 4h (regime)
 | Trạng thái | Điều kiện |
 |---|---|
@@ -195,8 +200,9 @@ File sẽ tạo/sửa (đều trong `user_data/`, không đụng core):
 
 | Bước | Việc | Ai làm |
 |---|---|---|
-| 0 | **Chiến lược nền** trend-following khung 4h (kênh Donchian + lọc xu hướng ngày + BTC, tham số kinh điển, không tối ưu). Đây là mốc so sánh: mọi setup 1h ở mục 3 chỉ được giữ nếu thắng chiến lược nền trên cùng dải dữ liệu, sau phí và khi vào trễ 1 nến. So thêm với mua và giữ cùng danh mục | Claude |
-| 1 | Code strategy + config + tin nhắn | Claude |
+| 0a | Chiến lược nền trend-following khung 4h (kênh Donchian + lọc xu hướng ngày + BTC, tham số kinh điển, không tối ưu). Đây là mốc so sánh: mọi setup 1h ở mục 3 chỉ được giữ nếu thắng chiến lược nền trên cùng dải dữ liệu, sau phí và khi vào trễ 1 nến. So thêm với mua và giữ cùng danh mục | Claude |
+| 0b | **Chiến lược chính: ensemble Donchian khung ngày + vol-target** (tái tạo mô hình đã công bố, tham số gốc). Kiểm định bằng backtester danh mục (`scripts/research/mce/portfolio.py`) theo cổng danh mục trong `quant-strategy.md` | Claude |
+| 1 | Port sang Freqtrade (khung 1d, đổi tỷ trọng bằng `adjust_trade_position`), lookahead/recursive, đối chiếu với backtester danh mục; tin nhắn dạng "tỷ trọng mục tiêu từng coin + thay đổi hôm nay" | Claude |
 | 2 | Tải dữ liệu, chạy lookahead/recursive, backtest, báo cáo kết quả thật | Claude |
 | 3 | Tinh chỉnh (ít tham số), kiểm tra lần cuối trên dữ liệu giữ lại | Claude + bạn duyệt |
 | 4 | Tạo bot BotFather, thuê VPS, triển khai dry-run | Bạn (Claude hướng dẫn) |

@@ -94,4 +94,4 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
 | 12 chỉ báo cổ điển × 1h/4h | Không chỉ báo đứng riêng nào đạt; trend 4h nhỉnh hơn 1h; mean-reversion dính bẫy winrate |
 | Regime theo luật | Tách được biên độ tương lai, gần như không tách được hướng → dùng để định cỡ |
 | Trend 4h kiểu turtle, một lookback, trailing chặt | Gần hòa vốn, thua xa mua-giữ |
-| Ensemble Donchian khung ngày + vol-target | Đang kiểm định (xem STATE) |
+| Ensemble Donchian khung ngày + vol-target (tham số gốc của bài báo) | Hướng đầu tiên có lợi thế rõ trên IS: Sharpe cao hơn mua-giữ có vol-target, drawdown thấp, bền với phí và vào trễ. Còn vướng một cổng ổn định theo năm; chi tiết trong STATE |
