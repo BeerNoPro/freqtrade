@@ -33,10 +33,10 @@ Code nằm ở `scripts/research/mce/` (package `mce`):
 | Module | Vai trò |
 |---|---|
 | `data.py` | Nạp feather qua `freqtrade.data.history`, ghép 4h bằng `merge_informative_pair`, ghép funding theo thời điểm công bố |
-| `features.py` | ATR, ADX, EMA slope theo ATR, percentile/z-score cuốn chiếu, cấu trúc nến, breakout |
+| `features.py` | ATR, ADX, EMA slope theo ATR, percentile/z-score cuốn chiếu, cấu trúc nến, breakout, hạng cắt ngang trung bình của nhiều tín hiệu |
 | `regime.py` | Regime theo luật minh bạch + kiểm tra regime có tách biệt kết quả tương lai không |
 | `hooks.py` | `Hook` (dataclass) + `HookRegistry` + fingerprint |
-| `labels.py` | **Module duy nhất được nhìn tương lai**: lợi suất tương lai theo R, triple-barrier, MFE/MAE |
+| `labels.py` | **Module duy nhất được nhìn tương lai**: lợi suất tương lai theo R, triple-barrier, MFE/MAE, lợi suất mua-giữ N ngày (coin delist thoát ở close cuối), tổng funding trong cửa sổ giữ |
 | `stats.py` | Block bootstrap, Benjamini–Hochberg, Brier, log loss, reliability, Brier skill score |
 | `event_study.py` | Chạy hook × cặp × horizon, so baseline cùng regime, áp go/no-go |
 | `walkforward.py` | Chia walk-forward cuốn chiếu có purge + embargo |
@@ -46,7 +46,7 @@ Code nằm ở `scripts/research/mce/` (package `mce`):
 | `model.py` | Logistic regression L2 (numpy/scipy), walk-forward trên panel nhiều coin (purge + embargo theo mốc thời gian chung) |
 | `setups.py` | Kỳ vọng R sau phí, chọn setup (1 setup mở/coin, trần số setup đồng thời), thống kê theo R |
 | `universe.py` | Danh sách cố định `DEFAULT_PAIRS`; danh mục point-in-time (top-N theo trung vị quote volume, chỉ dùng dữ liệu đến ngày đó) |
-| `portfolio.py` | Backtester danh mục theo trọng số mục tiêu khung ngày, phí, funding, Deflated Sharpe, bootstrap khối Sharpe |
+| `portfolio.py` | Backtester danh mục theo trọng số mục tiêu khung ngày, phí, funding, Deflated Sharpe, bootstrap khối Sharpe; rổ long-short theo phân vị (trung lập đô la hoặc trung lập beta BTC), beta cuốn chiếu, các lớp chồng giữ N ngày, tách beta/alpha của chuỗi lợi suất |
 
 CLI: `scripts/research/run_event_study.py`, `scripts/research/collect_derivs.py`,
 `scripts/research/download_pit_universe.py` (dữ liệu cho danh mục point-in-time, ghi vào `user_data/research/pit/`).

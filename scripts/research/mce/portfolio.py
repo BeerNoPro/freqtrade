@@ -1,5 +1,6 @@
 """
-Daily portfolio backtester for target-weight strategies (trend ensembles, volatility targeting).
+Daily portfolio backtester for target-weight strategies (trend ensembles, volatility targeting,
+cross-sectional long-short tranches).
 
 Timing: ``weights`` row t is decided at the close of day t and traded at that close, so it earns
 the return from close t to close t+1. ``lag=1`` trades one day later (late-execution check).
@@ -48,6 +49,20 @@ def funding_known_at_close(funding: pd.DataFrame, index: pd.DatetimeIndex) -> pd
     return funding.groupby(key).sum(min_count=1).reindex(index)
 
 
+def quantile_legs(
+    signal: pd.DataFrame, members: pd.DataFrame, quantile: float
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    (top, bottom) boolean frames: per row, the ``floor(n * quantile)`` members with the highest /
+    lowest signal, n = members with a signal. Ties are broken by column order.
+    """
+    sig = signal.where(members)
+    k = np.floor(sig.notna().sum(axis=1) * quantile)
+    top = sig.rank(axis=1, ascending=False, method="first").le(k, axis=0)
+    bottom = sig.rank(axis=1, ascending=True, method="first").le(k, axis=0)
+    return top, bottom
+
+
 def quantile_long_short(
     signal: pd.DataFrame,
     members: pd.DataFrame,
@@ -61,14 +76,87 @@ def quantile_long_short(
     per leg. Weights are held until the next rebalance; a position whose coin leaves
     ``members`` (delisted, out of the universe) is closed that day and not replaced.
     """
-    sig = signal.where(members)
-    k = np.floor(sig.notna().sum(axis=1) * quantile)
-    per_name = (gross / 2 / k).replace(np.inf, 0.0)
-    short = sig.rank(axis=1, ascending=False, method="first").le(k, axis=0)
-    long = sig.rank(axis=1, ascending=True, method="first").le(k, axis=0)
+    short, long = quantile_legs(signal, members, quantile)
+    per_name = (gross / 2 / long.sum(axis=1)).replace(np.inf, 0.0)
     target = long.astype(float).sub(short.astype(float)).mul(per_name, axis=0)
     target.loc[~np.asarray(rebalance)] = np.nan
     return target.ffill().fillna(0.0).where(members, 0.0)
+
+
+def rolling_beta(
+    close: pd.DataFrame, market: str, window: int = 90, min_periods: int = 60
+) -> pd.DataFrame:
+    """
+    OLS beta of each column's daily returns on the ``market`` column's daily returns, over the
+    trailing ``window`` rows, using days where both returns exist (at least ``min_periods``).
+    Causal: row t uses closes <= t.
+    """
+    ret = close.pct_change()
+    m = np.broadcast_to(ret[market].to_numpy()[:, None], ret.shape)
+    both = ret.notna() & np.isfinite(m)
+    x = ret.where(both)
+    mk = pd.DataFrame(np.where(both, m, np.nan), index=ret.index, columns=ret.columns)
+
+    def mean(frame: pd.DataFrame) -> pd.DataFrame:
+        return frame.rolling(window, min_periods=min_periods).mean()
+
+    cov = mean(x * mk) - mean(x) * mean(mk)
+    var = mean(mk * mk) - mean(mk) ** 2
+    return cov / var.where(var > 0)
+
+
+def long_short_tranches(
+    score: pd.DataFrame,
+    members: pd.DataFrame,
+    quantile: float,
+    beta: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """
+    Weights of the tranche opened at the close of each row (gross 1; 0 where nothing is ranked):
+    long the top ``quantile`` of members by ``score``, short the bottom, equal weight inside a
+    leg. Without ``beta`` the legs get 0.5 each (dollar neutral). With ``beta`` they are scaled
+    so the tranche has no ex-ante beta: long gross = beta_short / (beta_long + beta_short), a
+    leg's beta being the mean beta of its coins; rows where a leg beta is missing or not
+    positive fall back to 0.5 / 0.5.
+    """
+    top, bottom = quantile_legs(score, members, quantile)
+    g_long = pd.Series(0.5, index=score.index)
+    if beta is not None:
+        b = beta.reindex_like(score)
+        b_long, b_short = b.where(top).mean(axis=1), b.where(bottom).mean(axis=1)
+        g_long = (b_short / (b_long + b_short)).where((b_long > 0) & (b_short > 0), 0.5)
+    w_long = top.astype(float).mul(g_long / top.sum(axis=1), axis=0)
+    w_short = bottom.astype(float).mul((1 - g_long) / bottom.sum(axis=1), axis=0)
+    return (w_long - w_short).fillna(0.0)
+
+
+def staggered(tranches: pd.DataFrame, hold: int, alive: pd.DataFrame) -> pd.DataFrame:
+    """
+    Daily target weights of overlapping tranches: the tranche opened on row d is held on rows
+    d .. d + hold - 1 with 1 / ``hold`` of the capital, so row t holds the mean of the last
+    ``hold`` tranches. A coin with ``alive`` False on row t (no close: delisted or halted) is
+    closed that day. Rows must be consecutive days.
+    """
+    total = tranches.fillna(0.0)
+    for lag in range(1, hold):
+        total = total + tranches.shift(lag).fillna(0.0)
+    alive = alive.reindex(index=total.index, columns=total.columns, fill_value=False)
+    return (total / hold).where(alive.astype(bool), 0.0)
+
+
+def beta_attribution(net: pd.Series, market: pd.Series) -> dict[str, float]:
+    """
+    OLS beta of daily returns on the market's returns over the same holding days, and what is
+    left without it: residual ``net - beta * market`` as annualised mean (alpha) and Sharpe.
+    """
+    df = pd.concat({"y": net, "m": market}, axis=1).dropna()
+    beta = df["y"].cov(df["m"]) / df["m"].var()
+    resid = df["y"] - beta * df["m"]
+    return {
+        "beta": float(beta),
+        "alpha": float(resid.mean() * DAYS),
+        "resid_sharpe": float(resid.mean() / resid.std() * np.sqrt(DAYS)),
+    }
 
 
 @dataclass
