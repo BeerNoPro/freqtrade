@@ -28,3 +28,18 @@ services:
       --db-url sqlite:////freqtrade/user_data/tradesv3.dryrun.sqlite
       --config /freqtrade/user_data/config_futures.json
       --strategy ${FT_STRATEGY:-FuturesSignalStrategy}
+
+  # Records Binance data the public archive does not keep (liquidations, best bid/ask, predicted
+  # funding, order book, options) into user_data/research/live - see scripts/research/record_market.py.
+  #   docker compose up -d --build recorder
+  recorder:
+    image: futures-signal-bot:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    container_name: market-recorder
+    volumes:
+      - "./user_data:/freqtrade/user_data"
+    working_dir: /freqtrade/scripts/research
+    entrypoint: ["python", "record_market.py"]

@@ -1,0 +1,184 @@
+"""Market data recorder: row parsing, storage, compaction, scheduling and WebSocket reconnects."""
+
+import asyncio
+import json
+from pathlib import Path
+
+import pandas as pd
+import pytest
+import websockets
+from mce.recorder import (
+    PartWriter,
+    beat,
+    compact_all,
+    depth_rows,
+    force_order_row,
+    next_run,
+    option_series,
+    record_ws,
+    snapshot_rows,
+    top_symbols,
+)
+
+
+# a real message of the !forceOrder@arr stream (2026-10-11)
+SAMPLE = {
+    "e": "forceOrder",
+    "E": 1791712687186,
+    "o": {
+        "s": "CFXUSDT",
+        "S": "BUY",
+        "o": "LIMIT",
+        "f": "IOC",
+        "q": "688",
+        "p": "0.0691900",
+        "ap": "0.0685859",
+        "X": "FILLED",
+        "l": "412",
+        "z": "688",
+        "T": 1791712686180,
+        "st": 1,
+    },
+}
+DAY_MS = 1791676800000  # 2026-10-11 00:00 UTC
+
+
+def test_force_order_row_renames_and_keeps_unknown_fields() -> None:
+    row = force_order_row(SAMPLE, 5)
+    assert row["received"] == 5 and row["event_time"] == SAMPLE["E"]
+    assert row["symbol"] == "CFXUSDT" and row["side"] == "BUY" and row["avg_price"] == "0.0685859"
+    assert row["filled_qty"] == "688" and row["trade_time"] == 1791712686180
+    assert row["o_st"] == 1  # a field added by the exchange is kept, not dropped
+
+
+def test_snapshot_and_depth_rows() -> None:
+    payload = [{"symbol": "BTCUSDT", "bidPrice": "1"}, {"symbol": "ETHUSDT", "bidPrice": "2"}]
+    assert snapshot_rows(payload, 7) == [{"taken": 7, **p} for p in payload]
+    assert [r["symbol"] for r in snapshot_rows(payload, 7, ["ETHUSDT"])] == ["ETHUSDT"]
+    book = {
+        "lastUpdateId": 9,
+        "E": 1,
+        "T": 2,
+        "bids": [["10", "1"], ["9", "2"]],
+        "asks": [["11", "3"]],
+    }
+    rows = depth_rows("BTCUSDT", book, 7)
+    assert [(r["side"], r["level"], r["price"]) for r in rows] == [
+        ("bid", 0, "10"),
+        ("bid", 1, "9"),
+        ("ask", 0, "11"),
+    ]
+    assert rows[0]["last_update_id"] == 9 and rows[0]["taken"] == 7
+
+
+def test_top_symbols_and_option_series() -> None:
+    info = {
+        "symbols": [
+            {"symbol": "BTCUSDT", "status": "TRADING", "contractType": "PERPETUAL"},
+            {"symbol": "ETHUSDT", "status": "TRADING", "contractType": "PERPETUAL"},
+            {"symbol": "OLDUSDT", "status": "SETTLING", "contractType": "PERPETUAL"},
+            {"symbol": "BTCUSDT_261225", "status": "TRADING", "contractType": "CURRENT_QUARTER"},
+            {"symbol": "USDCUSDT", "status": "TRADING", "contractType": "PERPETUAL"},
+            {
+                "symbol": "TSLAUSDT",
+                "status": "TRADING",
+                "contractType": "PERPETUAL",
+                "underlyingType": "EQUITY",
+                "underlyingSubType": ["TradFi"],
+            },
+        ]
+    }
+    tickers = [
+        {"symbol": s, "quoteVolume": str(v)}
+        for s, v in [("BTCUSDT", 5), ("ETHUSDT", 9), ("OLDUSDT", 99), ("USDCUSDT", 50)]
+        + [("BTCUSDT_261225", 70), ("TSLAUSDT", 80)]
+    ]
+    assert top_symbols(tickers, info, 5) == ["ETHUSDT", "BTCUSDT"]
+    assert top_symbols(tickers, info, 1) == ["ETHUSDT"]
+    options = {
+        "optionSymbols": [
+            {"symbol": "BTC-261225-50000-P"},
+            {"symbol": "BTC-261225-90000-C"},
+            {"symbol": "ETH-261030-3000-C"},
+        ]
+    }
+    assert option_series(options) == [("BTC", "261225"), ("ETH", "261030")]
+
+
+def test_next_run_is_on_the_grid_and_strictly_later() -> None:
+    assert next_run(60.0, 60, 2.0) == 62.0
+    assert next_run(62.0, 60, 2.0) == 122.0  # a boundary that just passed is not reused
+    assert next_run(61.9, 60, 2.0) == 62.0
+    assert next_run(3599.0, 300, 2.0) == 3602.0
+
+
+def test_writer_and_compaction_round_trip(tmp_path: Path) -> None:
+    writer = PartWriter(tmp_path)
+    rows = [{"taken": DAY_MS - 1000 + i, "symbol": "BTCUSDT", "bidPrice": "1.5"} for i in range(3)]
+    writer.append("book_ticker", rows[:2], DAY_MS - 3_600_000)  # 2026-10-10 23:00
+    writer.append("book_ticker", rows[2:], DAY_MS - 7_200_000)  # 2026-10-10 22:00
+    writer.append("book_ticker", rows, DAY_MS + 60_000)  # today: must not be compacted
+    part = tmp_path / "book_ticker" / "2026-10-10" / "part-23.jsonl"
+    with part.open("a", encoding="utf-8") as f:
+        f.write('{"taken": 1, "sym')  # a line cut by a crash
+    writer.gap("liquidations", 1, 2, "reconnected")
+
+    assert compact_all(tmp_path, "2026-10-11") == {"book_ticker": 3}
+    out = pd.read_parquet(tmp_path / "book_ticker" / "2026-10-10.parquet")
+    assert len(out) == 3 and out["taken"].is_monotonic_increasing
+    assert out["bidPrice"].dtype == float and out["symbol"].tolist() == ["BTCUSDT"] * 3
+    assert not (tmp_path / "book_ticker" / "2026-10-10").exists()
+    assert (tmp_path / "book_ticker" / "2026-10-11" / "part-00.jsonl").exists()
+    assert compact_all(tmp_path, "2026-10-11") == {}  # idempotent
+    gaps = (tmp_path / "_gaps.jsonl").read_text(encoding="utf-8").splitlines()
+    assert json.loads(gaps[0]) == {
+        "stream": "liquidations",
+        "start": 1,
+        "end": 2,
+        "reason": "reconnected",
+    }
+
+
+def _rows(folder: Path) -> int:
+    return sum(len(p.read_text(encoding="utf-8").splitlines()) for p in folder.rglob("*.jsonl"))
+
+
+async def test_record_ws_reconnects_and_logs_the_gap(tmp_path: Path) -> None:
+    connections = []
+
+    async def server_side(ws) -> None:
+        connections.append(ws)
+        if len(connections) == 1:
+            await ws.send(json.dumps(SAMPLE))
+            await ws.send(json.dumps([SAMPLE, SAMPLE]))  # array payloads are split
+            return  # closing the connection forces a reconnect
+        await ws.send(json.dumps(SAMPLE))
+        await ws.wait_closed()
+
+    async with websockets.serve(server_side, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        writer = PartWriter(tmp_path)
+        task = asyncio.create_task(
+            record_ws(f"ws://127.0.0.1:{port}", "liquidations", writer, backoff=(0.01, 0.05))
+        )
+        for _ in range(250):
+            await asyncio.sleep(0.02)
+            if _rows(tmp_path / "liquidations") >= 4:
+                break
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert _rows(tmp_path / "liquidations") == 4 and len(connections) == 2
+    gaps = [json.loads(x) for x in (tmp_path / "_gaps.jsonl").read_text().splitlines()]
+    assert [g["reason"] for g in gaps] == ["reconnected"] and gaps[0]["end"] >= gaps[0]["start"]
+
+
+def test_heartbeat_logs_a_long_silence_as_a_gap(tmp_path: Path) -> None:
+    writer, path = PartWriter(tmp_path), tmp_path / ".heartbeat"
+    beat(path, writer, 1_000_000, 120_000)  # first beat ever: nothing to compare
+    beat(path, writer, 1_060_000, 120_000)  # one minute later: fine
+    assert not (tmp_path / "_gaps.jsonl").exists()
+    beat(path, writer, 1_400_000, 120_000)  # machine slept / recorder stopped
+    gap = json.loads((tmp_path / "_gaps.jsonl").read_text(encoding="utf-8"))
+    assert (gap["stream"], gap["start"], gap["end"]) == ("all", 1_060_000, 1_400_000)
+    assert path.read_text(encoding="utf-8") == "1400000"

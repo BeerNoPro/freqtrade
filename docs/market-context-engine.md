@@ -21,7 +21,8 @@ Tài liệu này chỉ chứa phần generic. Hook cụ thể, ngưỡng riêng,
 ## 2. Kiến trúc
 
 ```
-dữ liệu feather (futures, mark, index, premiumIndex, funding, 4h, BTC) + collector (OI, long/short, taker)
+dữ liệu feather (futures, mark, index, premiumIndex, funding, 4h, BTC) + kho point-in-time (nến, funding, OI,
+long/short) + bộ ghi thời gian thực (thanh lý, giá mua/bán, funding dự kiến, sổ lệnh, quyền chọn)
       │
  features ──► regime ──► hooks ──► event study (nghiên cứu, ngoài engine)
       │                    │
@@ -41,15 +42,15 @@ Code nằm ở `scripts/research/mce/` (package `mce`):
 | `event_study.py` | Chạy hook × cặp × horizon, so baseline cùng regime, áp go/no-go |
 | `walkforward.py` | Chia walk-forward cuốn chiếu có purge + embargo |
 | `journal.py` | Forward journal sqlite: ghi nhận định, chấm điểm khi horizon đóng |
-| `collector.py` | Thu OI / long-short / taker volume (API chỉ giữ ~30 ngày) |
+| `recorder.py` | Ghi dữ liệu sàn không lưu lịch sử (mục 9): ghi nối thêm JSONL theo giờ, gộp parquet theo ngày, log khoảng trống |
 | `archive.py` | Tải nến (1d, 4h) + funding cho **mọi** perp USDT-M từng niêm yết, kể cả đã delist (liệt kê từ kho data.binance.vision), và lịch sử OI / tỷ lệ long-short từ file `metrics` theo ngày của kho (API chỉ giữ 30 ngày) |
 | `model.py` | Logistic regression L2 (numpy/scipy), walk-forward trên panel nhiều coin (purge + embargo theo mốc thời gian chung) |
 | `setups.py` | Kỳ vọng R sau phí, chọn setup (1 setup mở/coin, trần số setup đồng thời), thống kê theo R |
 | `universe.py` | Danh sách cố định `DEFAULT_PAIRS`; danh mục point-in-time (top-N theo trung vị quote volume, chỉ dùng dữ liệu đến ngày đó) |
 | `portfolio.py` | Backtester danh mục theo trọng số mục tiêu khung ngày, phí, funding, Deflated Sharpe, bootstrap khối Sharpe; rổ long-short theo phân vị (trung lập đô la hoặc trung lập beta BTC), beta cuốn chiếu, các lớp chồng giữ N ngày, tách beta/alpha của chuỗi lợi suất |
 
-CLI: `scripts/research/run_event_study.py`, `scripts/research/collect_derivs.py`,
-`scripts/research/download_pit_universe.py` (dữ liệu cho danh mục point-in-time, ghi vào `user_data/research/pit/`).
+CLI: `scripts/research/run_event_study.py`, `scripts/research/download_pit_universe.py` (dữ liệu cho danh mục
+point-in-time, ghi vào `user_data/research/pit/`), `scripts/research/record_market.py` (bộ ghi, mục 9).
 
 ### Quy ước căn thời gian (row t = nến 1h mở lúc t, quyết định lúc đóng t+1h)
 | Nguồn | Cách ghép |
@@ -58,7 +59,7 @@ CLI: `scripts/research/run_event_study.py`, `scripts/research/collect_derivs.py`
 | nến 4h | `merge_informative_pair`: chỉ thấy nến 4h đã đóng |
 | funding_rate (in mỗi 8h tại thời điểm thanh toán T) | thấy được khi T ≤ t + 1h |
 | BTC 1h | cùng `date` |
-| OI / long-short / taker (collector) | theo timestamp kết thúc kỳ; ghép như funding |
+| OI / long-short / taker (kho `metrics`, ảnh chụp 5 phút) | chỉ dùng ảnh chụp **trước** thời điểm quyết định |
 
 ## 3. Interface hook
 
@@ -128,12 +129,31 @@ Chọn **(b) nghiên cứu ngoài engine**: script đọc feather, chạy event 
 - Lý do không chọn (a) cho nghiên cứu: backtest engine không phục vụ event study / bootstrap, và tính nặng trong vòng
   lặp bot làm chậm phát tín hiệu.
 
-## 9. Dữ liệu phái sinh lịch sử ngắn
-Endpoint public `https://fapi.binance.com/futures/data/*` (ccxt `binanceusdm`, không cần key):
-`openInterestHist`, `globalLongShortAccountRatio`, `topLongShortAccountRatio`, `topLongShortPositionRatio`,
-`takerlongshortRatio`. Period 5m…1d, `limit` ≤ 500, **chỉ giữ ~30 ngày**; `startTime` quá cửa sổ bị trả lỗi.
-Collector chạy định kỳ (≤ vài ngày/lần) để tích lũy lịch sử; log cảnh báo khi có khoảng trống.
-Các số liệu này được giả định yếu khi đứng riêng; chỉ kiểm định kết hợp (funding + OI + giá) khi đủ ≥ 6–12 tháng.
+## 9. Nguồn dữ liệu: kho lưu trữ và bộ ghi
+**Có lịch sử trên kho công khai `data.binance.vision`** (tải khi cần, `mce.archive` / `download_pit_universe.py`):
+nến mọi khung (kể cả mark, index, premium), funding, lệnh khớp (`trades`, `aggTrades`), OI + tỷ lệ long/short +
+taker mỗi 5 phút (`metrics`, từ 2020), độ dày sổ lệnh trong ±0,2/1/2/3/4/5% quanh giá mỗi 30 giây (`bookDepth`, từ
+2023). API `futures/data/*` chỉ giữ ~30 ngày nhưng kho có cùng số liệu (đã đối chiếu) nên không cần collector riêng.
+
+**Không có lịch sử ở đâu** → bộ ghi `scripts/research/record_market.py` ghi từ khi bật (`user_data/research/live/`):
+
+| Luồng | Nguồn | Tần suất |
+|---|---|---|
+| `liquidations` | WebSocket `wss://fstream.binance.com/market/ws/!forceOrder@arr` (sàn chỉ đẩy ≤ 1 lệnh/giây/coin) | mọi tin |
+| `book_ticker` | `/fapi/v1/ticker/bookTicker`, top-100 theo quote volume 24h | 1 phút |
+| `premium_index` | `/fapi/v1/premiumIndex`: mark, index, funding dự kiến, giờ funding kế, mọi coin | 5 phút |
+| `depth` | `/fapi/v1/depth` 100 mức mỗi phía, top-20 | 5 phút |
+| `options_mark` | `/eapi/v1/mark`: mark, IV mua/bán/mark, delta, gamma, theta, vega | 15 phút |
+| `options_ticker`, `options_oi` | `/eapi/v1/ticker`, `/eapi/v1/openInterest` | 1 giờ |
+| `meta` | exchangeInfo (futures, options), fundingInfo, ticker 24h (JSON nén) | hằng ngày |
+
+- Mỗi luồng chụp một lần khi khởi động rồi theo lưới đồng hồ. Ghi nối thêm `<luồng>/<ngày>/part-<giờ>.jsonl` (UTC),
+  ngày đã qua được gộp thành `<luồng>/<ngày>.parquet`. Mất kết nối hoặc poll lỗi được ghi vào `live/_gaps.jsonl`.
+- Trên máy Windows: `scripts/research/schedule_recorder.ps1` (Task Scheduler, chạy ẩn, tự khởi động lại). Máy tắt/ngủ
+  thì có khoảng trống. Trên VPS: `docker compose up -d --build recorder`; chép dữ liệu về máy nghiên cứu bằng
+  `scp -r <vps>:<repo>/user_data/research/live user_data/research/` (hoặc rsync). Chỉ chạy một bộ ghi mỗi máy (khóa
+  `live/.recorder.lock`).
+- Dung lượng khoảng 40 MB/ngày. Các số liệu vị thế được giả định yếu khi đứng riêng; chỉ kiểm định kết hợp với giá.
 
 ## 10. Rủi ro thống kê → biện pháp
 | Rủi ro | Biện pháp |
@@ -149,7 +169,7 @@ Các số liệu này được giả định yếu khi đứng riêng; chỉ ki�
 ## 11. Lộ trình và go/no-go
 | Phase | Việc | Go khi |
 |---|---|---|
-| P1 | Dữ liệu futures + collector chạy định kỳ | Đủ dữ liệu 15 cặp, collector không có khoảng trống |
+| P1 | Kho dữ liệu point-in-time + bộ ghi chạy liên tục | Đủ dữ liệu danh mục; khoảng trống của bộ ghi được ghi lại |
 | P2 | Event study IS cho bộ hook v1, v2… | ≥ 1 hook qua cổng mục 4 |
 | P3 | Assessment + walk-forward OOS trong IS | BSS > 0, reliability lệch ≤ 5 điểm % |
 | P4 | Holdout một lần (đã ghi fingerprint) | Giữ BSS > 0 và lift cùng dấu |

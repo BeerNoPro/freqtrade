@@ -17,7 +17,7 @@ freqtrade/  (repo)
 ├── docs/               # Tài liệu tiếng Việt (overview, structure, lifecycle, signal-bot-workflow, trim-log)
 ├── scripts/            # gate.py (mọi kiểm tra trước commit, output gọn), format_code.py, check_encoding.py,
 │                       #   binance_update_lev_tiers.py (bảng đòn bẩy)
-│                       #   research/: Market Context Engine (package mce, event study, collector)
+│                       #   research/: Market Context Engine (package mce, event study, bộ ghi dữ liệu)
 │                       #   — xem docs/market-context-engine.md; test ở tests/research/
 ├── .gitattributes, .editorconfig, .pre-commit-config.yaml   # Chuẩn file text + git hook
 ├── Dockerfile, docker-compose.yml   # Build image từ repo, chạy futures dry-run (triển khai VPS)
@@ -316,7 +316,7 @@ user_data/
 │   └── MyStrategy.py        # Bản sao sample strategy (RSI + TEMA + Bollinger), chưa backtest
 ├── data/binance/            # OHLCV đã tải: BTC/USDT, ETH/USDT (5m, 1h) — spot
 ├── research/                # Riêng tư: STATE.md, thresholds.json, fingerprints.jsonl, script nghiên cứu,
-│                            #   pit/ (nến ngày + funding mọi perp từ 2024), derivs/ (OI, long/short từ collector)
+│                            #   pit/ (nến, funding, OI/long-short point-in-time từ 2024), live/ (bộ ghi thời gian thực)
 ├── reports/                 # Báo cáo nghiên cứu (không commit)
 ├── tradesv3.dryrun.sqlite   # DB dry-run
 ├── backtest_results/        # Kết quả backtest (.zip)
