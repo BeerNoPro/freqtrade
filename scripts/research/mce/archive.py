@@ -5,8 +5,11 @@ The public archive (data.binance.vision) lists every USDT-M symbol, and the fapi
 ``fundingRate`` endpoints still serve history for symbols already removed from exchangeInfo
 (LUNA, MATIC, EOS, SRM...). Together they give a candidate list without survivorship bias.
 The few symbols the API rejects (SXP, BTCST...) are rebuilt from the archive's monthly files.
+Positioning metrics (open interest, long/short ratios) only live ~30 days in the API, so their
+history comes from the archive's daily ``metrics`` files.
 Public endpoints (no API key). Files are appended idempotently to
-``<outdir>/<kind>/<SYMBOL>.parquet`` with ``kind`` in ``klines_1d`` / ``funding``.
+``<outdir>/<kind>/<SYMBOL>.parquet`` with ``kind`` in ``klines_<interval>`` / ``funding`` /
+``metrics``.
 """
 
 import io
@@ -14,6 +17,7 @@ import logging
 import re
 import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import ccxt
@@ -27,7 +31,9 @@ S3_LIST = "https://s3-ap-northeast-1.amazonaws.com/data.binance.vision"
 ARCHIVE = "https://data.binance.vision/"
 KLINES_PREFIX = "data/futures/um/monthly/klines/"
 FUNDING_PREFIX = "data/futures/um/monthly/fundingRate/"
+METRICS_PREFIX = "data/futures/um/daily/metrics/"
 DAY_MS = 86_400_000
+INTERVAL_MS = {"1h": 3_600_000, "4h": 14_400_000, "1d": DAY_MS}
 PAGE_LIMIT = 1000
 FUNDING_PAUSE = 0.65  # fundingRate shares 500 requests / 5 min / IP
 KLINE_COLS = [
@@ -41,10 +47,18 @@ KLINE_COLS = [
     "quote_volume",
     "trades",
     "taker_base",
-    "taker_quote",
+    "taker_buy_quote",
     "ignore",
 ]
-PRICE_COLS = ["open", "high", "low", "close", "volume", "quote_volume"]
+PRICE_COLS = ["open", "high", "low", "close", "volume", "quote_volume", "taker_buy_quote"]
+# archive metrics column -> stored name (5-minute snapshots)
+METRICS_COLS = {
+    "sum_open_interest_value": "oi_value",
+    "sum_toptrader_long_short_ratio": "top_ls_position",
+    "count_toptrader_long_short_ratio": "top_ls_account",
+    "count_long_short_ratio": "global_ls_account",
+    "sum_taker_long_short_vol_ratio": "taker_ls",
+}
 
 
 def parse_s3_prefixes(xml: str, prefix: str) -> tuple[list[str], bool]:
@@ -72,8 +86,8 @@ def list_um_usdt_symbols(timeout: float = 30) -> list[str]:
 
 
 def klines_to_frame(rows: list[list], now_ms: int | None = None) -> pd.DataFrame:
-    """Raw fapi klines -> date (open time, UTC) + prices + base and quote volume.
-    Candles still open at ``now_ms`` are dropped."""
+    """Raw fapi klines -> date (open time, UTC) + prices, base / quote volume and taker buy
+    quote volume. Candles still open at ``now_ms`` are dropped."""
     if not rows:
         return pd.DataFrame(columns=["date", *PRICE_COLS])
     raw = pd.DataFrame(rows, columns=KLINE_COLS)
@@ -120,6 +134,17 @@ def parse_archive_funding(text: str) -> pd.DataFrame:
     raw = raw[raw["calc_time"].str.isdigit()]
     rows = raw.rename(columns={"calc_time": "fundingTime", "last_funding_rate": "fundingRate"})
     return funding_to_frame(rows.to_dict("records"))
+
+
+def parse_metrics_csv(text: str, minute: int = 50) -> pd.DataFrame:
+    """Daily archive metrics CSV -> hourly snapshots taken at ``minute`` past each hour (date =
+    snapshot time, UTC). Keeping one row per hour is enough for 4h decisions and keeps files small;
+    minute 50 leaves a 10-minute margin before a candle closes on the hour."""
+    raw = pd.read_csv(io.StringIO(text))
+    date = pd.to_datetime(raw["create_time"], utc=True)
+    out = raw[list(METRICS_COLS)].rename(columns=METRICS_COLS).astype(float)
+    out.insert(0, "date", date)
+    return out[date.dt.minute == minute].reset_index(drop=True)
 
 
 def archive_zip_keys(prefix: str, timeout: float = 30) -> list[str]:
@@ -170,10 +195,11 @@ def missing(outdir: Path, kind: str, symbols: list[str]) -> list[str]:
 
 
 def sync_from_archive(symbol: str, outdir: Path, kind: str, start: pd.Timestamp) -> int:
-    """Fallback for symbols the API rejects: rebuild ``kind`` from monthly archive files
-    (``<SYMBOL>-<kind>-YYYY-MM.zip``) of months from ``start`` on."""
-    if kind == "klines_1d":
-        prefix, parse = f"{KLINES_PREFIX}{symbol}/1d/", parse_archive_klines
+    """Fallback for symbols the API rejects: rebuild ``kind`` (``klines_<interval>`` or
+    ``funding``) from monthly archive files (``<SYMBOL>-<x>-YYYY-MM.zip``) from ``start`` on."""
+    if kind.startswith("klines_"):
+        interval = kind.removeprefix("klines_")
+        prefix, parse = f"{KLINES_PREFIX}{symbol}/{interval}/", parse_archive_klines
     else:
         prefix, parse = f"{FUNDING_PREFIX}{symbol}/", parse_archive_funding
     path = _path(outdir, kind, symbol)
@@ -200,19 +226,22 @@ def _since(old: pd.DataFrame, start_ms: int, step_ms: int) -> int:
     return int(old["date"].max().timestamp() * 1000) + step_ms
 
 
-def sync_klines(exchange: ccxt.Exchange, symbol: str, outdir: Path, start_ms: int) -> int:
-    """Append closed daily candles of raw ``symbol`` (e.g. ``LUNAUSDT``). Returns rows added."""
-    path = _path(outdir, "klines_1d", symbol)
+def sync_klines(
+    exchange: ccxt.Exchange, symbol: str, outdir: Path, start_ms: int, interval: str = "1d"
+) -> int:
+    """Append closed candles of raw ``symbol`` (e.g. ``LUNAUSDT``). Returns rows added."""
+    path = _path(outdir, f"klines_{interval}", symbol)
+    step = INTERVAL_MS[interval]
     old = pd.read_parquet(path) if path.exists() else pd.DataFrame()
-    since, now = _since(old, start_ms, DAY_MS), exchange.milliseconds()
+    since, now = _since(old, start_ms, step), exchange.milliseconds()
     rows: list[list] = []
     while since < now:
-        params = {"symbol": symbol, "interval": "1d", "startTime": since, "limit": PAGE_LIMIT}
+        params = {"symbol": symbol, "interval": interval, "startTime": since, "limit": PAGE_LIMIT}
         page = exchange.fapiPublicGetKlines(params)
         if not page:
             break
         rows += page
-        since = int(page[-1][0]) + DAY_MS
+        since = int(page[-1][0]) + step
         if len(page) < PAGE_LIMIT:
             break
     return _append(path, old, klines_to_frame(rows, now))
@@ -236,6 +265,26 @@ def sync_funding(exchange: ccxt.Exchange, symbol: str, outdir: Path, start_ms: i
         if len(page) < PAGE_LIMIT:
             break
     return _append(path, old, funding_to_frame(rows))
+
+
+def sync_metrics(
+    symbol: str, outdir: Path, start: pd.Timestamp, end: pd.Timestamp, workers: int = 16
+) -> int:
+    """Append hourly positioning snapshots for days in [start, end] from the archive's daily
+    metrics files, skipping days already stored. Returns rows added."""
+    path = _path(outdir, "metrics", symbol)
+    old = pd.read_parquet(path) if path.exists() else pd.DataFrame()
+    have = set(old["date"].dt.strftime("%Y-%m-%d")) if len(old) else set()
+    lo, hi = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
+    keys = [
+        k
+        for k in archive_zip_keys(f"{METRICS_PREFIX}{symbol}/")
+        if lo <= k[-14:-4] <= hi and k[-14:-4] not in have
+    ]
+    with ThreadPoolExecutor(workers) as pool:
+        frames = list(pool.map(lambda key: parse_metrics_csv(_zip_text(key)), keys))
+    new = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    return _append(path, old, new)
 
 
 def load_wide(outdir: Path, kind: str, field: str, symbols: list[str]) -> pd.DataFrame:

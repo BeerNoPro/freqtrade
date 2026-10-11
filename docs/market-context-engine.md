@@ -42,7 +42,9 @@ Code nằm ở `scripts/research/mce/` (package `mce`):
 | `walkforward.py` | Chia walk-forward cuốn chiếu có purge + embargo |
 | `journal.py` | Forward journal sqlite: ghi nhận định, chấm điểm khi horizon đóng |
 | `collector.py` | Thu OI / long-short / taker volume (API chỉ giữ ~30 ngày) |
-| `archive.py` | Tải nến ngày + funding cho **mọi** perp USDT-M từng niêm yết, kể cả đã delist (liệt kê từ kho data.binance.vision) |
+| `archive.py` | Tải nến (1d, 4h) + funding cho **mọi** perp USDT-M từng niêm yết, kể cả đã delist (liệt kê từ kho data.binance.vision), và lịch sử OI / tỷ lệ long-short từ file `metrics` theo ngày của kho (API chỉ giữ 30 ngày) |
+| `model.py` | Logistic regression L2 (numpy/scipy), walk-forward trên panel nhiều coin (purge + embargo theo mốc thời gian chung) |
+| `setups.py` | Kỳ vọng R sau phí, chọn setup (1 setup mở/coin, trần số setup đồng thời), thống kê theo R |
 | `universe.py` | Danh sách cố định `DEFAULT_PAIRS`; danh mục point-in-time (top-N theo trung vị quote volume, chỉ dùng dữ liệu đến ngày đó) |
 | `portfolio.py` | Backtester danh mục theo trọng số mục tiêu khung ngày, phí, funding, Deflated Sharpe, bootstrap khối Sharpe |
 
