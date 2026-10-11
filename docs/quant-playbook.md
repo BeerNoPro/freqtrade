@@ -42,7 +42,9 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
   dự báo được rủi ro sập.
 - **Cách dùng:** chủ yếu là **thước đo đông vị thế** (funding cực đoan → rủi ro đảo chiều/thanh lý). Chiến lược
   delta-neutral (long spot, short perp) là hướng khác, không phải bot tín hiệu.
-- **Bẫy:** funding đứng riêng dự báo hướng giá yếu; quên chi phí funding khi giữ vị thế futures lâu.
+- **Bẫy:** funding đứng riêng dự báo hướng giá yếu; quên chi phí funding khi giữ vị thế futures lâu. Long-short cắt
+  ngang theo funding (long coin funding thấp, short coin funding cao) thu được funding thật nhưng bị giá ăn ngược:
+  coin funding âm thường tiếp tục giảm (xem mục 10).
 
 ## 4. Momentum cắt ngang (cross-sectional)
 - **Cơ chế:** coin mạnh hơn nhóm tiếp tục mạnh hơn trong ngắn/trung hạn.
@@ -75,10 +77,15 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
 
 ## 8. Chuẩn kiểm định
 - Dải IS để phát triển, **holdout chạy một lần**, walk-forward có purge/embargo cho mô hình có fit.
+- Dữ liệu đánh giá: **2025 → nay** (chế độ thị trường gần nhất). Đổi lại mẫu ngắn: một năm dữ liệu ngày cho sai số
+  chuẩn của Sharpe khoảng 1,0, nên luôn báo CI bootstrap và ưu tiên tín hiệu cắt ngang nhiều coin (nhiều quan sát
+  độc lập hơn) hơn tín hiệu trên một tài sản.
+- Danh mục coin phải **point-in-time** (chọn theo thanh khoản tại từng thời điểm, kể cả coin đã delist), không dùng
+  danh sách chọn theo hiện tại.
 - Đếm **mọi lần thử** trên IS. Dùng Deflated Sharpe Ratio (Bailey & López de Prado, 2014) và Probability of
   Backtest Overfitting (Bailey et al., 2017) khi đã thử nhiều biến thể.
 - Luôn so với: **mua và giữ** (thường và có vol-target), **baseline** đơn giản, **vào trễ 1 nến**.
-- Tính đủ phí, funding, trượt giá. Ghi rõ survivorship bias của danh sách coin.
+- Tính đủ phí, funding, trượt giá.
 - Harvey, Liu & Zhu (2016, RFS): với nhiều phép thử, ngưỡng t hợp lý > 3,0. https://www.nber.org/papers/w20592
 
 ## 9. Bài học từ cộng đồng
@@ -95,4 +102,5 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
 | Regime theo luật | Tách được biên độ tương lai, gần như không tách được hướng → dùng để định cỡ |
 | Trend 4h kiểu turtle, một lookback, trailing chặt | Gần hòa vốn, thua xa mua-giữ |
 | Ensemble Donchian khung ngày + vol-target (tham số gốc của bài báo) | Trên danh sách coin chọn hôm nay thì trông có lợi thế. Trên danh mục point-in-time (top theo thanh khoản tại từng thời điểm, kể cả coin đã delist) phần lớn lợi thế biến mất và thua BTC mua-giữ có vol-target → bác bỏ. Vẫn hơn trend SMA đơn giản và drawdown thấp |
+| Carry funding cắt ngang (long 1/3 funding thấp, short 1/3 funding cao, tái cân bằng tuần, dữ liệu 2025+) | Không đạt: phần funding thu được dương rõ nhưng phần giá âm gần tương đương, Sharpe quanh 0. Funding âm phản ánh xu hướng giảm đúng chứ không phải cơ hội đảo chiều |
 | Bài học chung | Danh sách coin chọn theo hiện tại làm phồng Sharpe đáng kể, chủ yếu do chọn trúng coin sống sót tăng tốt chứ không phải do né coin chết. Kiểm định danh mục phải dùng danh mục point-in-time (`mce.universe`, `mce.archive`) |
