@@ -60,15 +60,22 @@ def main() -> None:
     parser.add_argument("--end", default="2025-07-01", help="exclusive")
     parser.add_argument("--out", type=Path, default=Path("user_data/reports"))
     parser.add_argument("--tag", default="IS-v1")
+    parser.add_argument("--timeframe", default="1h", choices=["1h", "4h"])
+    parser.add_argument("--horizons", nargs="+", type=int, default=[1, 4, 12, 24])
     args = parser.parse_args()
 
     registry = load_registry(args.hooks)
-    hooks = list(registry)
+    hooks = [h for h in registry if h.timeframes[0] == args.timeframe]
+    missing = [h.id for h in hooks if h.horizon not in args.horizons]
+    if missing:
+        raise SystemExit(f"primary horizon not in --horizons for: {missing}")
     cfg = StudyConfig(
-        start=pd.Timestamp(args.start, tz="UTC"), end=pd.Timestamp(args.end, tz="UTC")
+        start=pd.Timestamp(args.start, tz="UTC"),
+        end=pd.Timestamp(args.end, tz="UTC"),
+        horizons=tuple(args.horizons),
     )
-    btc = btc_context(args.datadir)
-    frames = {p: prepare_pair(p, args.datadir, btc) for p in args.pairs}
+    btc = btc_context(args.datadir, args.timeframe)
+    frames = {p: prepare_pair(p, args.datadir, btc, args.timeframe) for p in args.pairs}
     frames = {p: df for p, df in frames.items() if len(df)}
 
     events = run(hooks, frames, cfg)
@@ -83,8 +90,9 @@ def main() -> None:
     lines = [
         f"# Event study {args.tag}",
         "",
-        f"- Range: {cfg.start.date()} -> {cfg.end.date()} (exclusive), 1h, {len(frames)} pairs",
-        f"- Registry fingerprint: `{registry.fingerprint()}`",
+        f"- Range: {cfg.start.date()} -> {cfg.end.date()} (exclusive)",
+        f"- Timeframe: {args.timeframe}, pairs: {len(frames)}",
+        f"- Registry fingerprint (whole file): `{registry.fingerprint()}`",
         f"- Hooks: {', '.join(f'{h.id} ({h.fingerprint()})' for h in hooks)}",
         f"- Config: {json.dumps({k: str(v) for k, v in cfg.__dict__.items()})}",
         "- R = move / ATR14 at entry; lift = signed return minus same-pair same-regime mean;",
