@@ -18,7 +18,7 @@ thái trước khi đề xuất hay code bất kỳ ý tưởng nào. Không là
 ## Tài liệu (tra mục lục, chỉ đọc mục liên quan — không đọc cả file)
 | File | Nội dung |
 |---|---|
-| [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md) | **Thiết kế bot**: workflow, công thức, tin nhắn, ngưỡng kiểm chứng, lộ trình |
+| [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md) | **Thiết kế bot**: quyết định đã chốt, workflow, tin nhắn, ánh xạ Freqtrade, lộ trình |
 | [docs/quant-playbook.md](docs/quant-playbook.md) | **Các họ mô hình có bằng chứng** (trend, vol-target, carry...), chuẩn kiểm định, bài học |
 | [docs/market-context-engine.md](docs/market-context-engine.md) | **Nhận định thị trường**: hook, event study, regime, journal (code `scripts/research/mce/`) |
 | [docs/huong-dan-nhan-dinh-thi-truong.md](docs/huong-dan-nhan-dinh-thi-truong.md) | Bản giải thích dễ hiểu của hệ thống nhận định (cho người không chuyên quant) |
@@ -48,7 +48,7 @@ theo checklist), `strategy-reviewer` (phản biện chỉ đọc: overfit, looka
 - Chạy CLI: `.venv/Scripts/freqtrade.exe <lệnh>`; launcher: `.\run.ps1`
 - Config: `user_data/config.json` (spot, gitignore) và `user_data/config_futures.json` (futures, kế thừa qua `add_config_files`)
 ```bash
-.venv/Scripts/freqtrade.exe download-data --config user_data/config_futures.json --timeframes 1h 4h --timerange 20221101-
+.venv/Scripts/freqtrade.exe download-data --config user_data/config_futures.json --timeframes 1h 4h --timerange 20240101-
 .venv/Scripts/freqtrade.exe backtesting --config user_data/config_futures.json --strategy <S> --fee 0.0006 --enable-protections --breakdown month
 .venv/Scripts/python.exe scripts/gate.py                  # MỌI kiểm tra trước commit, output gọn (--tests, --skip, --only)
 .venv/Scripts/python.exe scripts/format_code.py          # format + chuẩn hóa encoding file đã đổi

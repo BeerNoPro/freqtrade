@@ -6,7 +6,7 @@ argument-hint: "<StrategyName> [smoke|full|oos]"
 
 # /validate-strategy — kiểm chứng strategy
 
-Luật: `.claude/rules/quant-strategy.md`, `.claude/rules/quant-mindset.md`. Thiết kế và ngưỡng: `docs/signal-bot-workflow.md` (mục 7).
+Luật và ngưỡng: `.claude/rules/quant-strategy.md`, `.claude/rules/quant-mindset.md`. Thiết kế bot: `docs/signal-bot-workflow.md`.
 Trạng thái và số lần thử: `user_data/research/STATE.md` (đọc trước, cập nhật sau).
 
 Tham số: `$ARGUMENTS` = `<StrategyName> [mode]`
@@ -19,17 +19,17 @@ Tham số: `$ARGUMENTS` = `<StrategyName> [mode]`
 ## Hằng số
 | Tên | Giá trị |
 |---|---|
-| Config | `user_data/config_futures.json` (hoặc config backtest riêng, vd `user_data/config_trend_bt.json`) |
-| IS (phát triển) | `20230101-20250701` |
-| OOS (holdout) | `20250701-` (tới hiện tại) |
-| Smoke | `20250301-20250601` |
+| Config | `user_data/config_futures.json` (hoặc config backtest riêng trong `user_data/`) |
+| IS (phát triển) | `20250101-20260401` (đọc lại `user_data/research/thresholds.json`) |
+| OOS (holdout) | `20260401-` (tới hiện tại) |
+| Smoke | `20260101-20260401` |
 | Phí | `--fee 0.0006` |
 | CLI | `.venv/Scripts/freqtrade.exe` |
 
 ## Các bước
 1. **Strategy nạp được:** `list-strategies --config <config>` → strategy ở trạng thái OK.
 2. **Dữ liệu:** `list-data --config <config> --show-timerange`. Thiếu khung hoặc dải thời gian thì tải:
-   `download-data --config <config> --timeframes 1h 4h --timerange 20221101-` (thêm `5m` nếu dùng `--timeframe-detail`).
+   `download-data --config <config> --timeframes 1h 4h --timerange 20240101-` (thêm `5m` nếu dùng `--timeframe-detail`).
 3. **Lookahead** (mode `full`): `lookahead-analysis --config <config> --strategy <S> --timerange <IS>`. Có cột/tín hiệu bị cờ bias → **dừng**, sửa strategy.
 4. **Recursive** (mode `full`): `recursive-analysis --config <config> --strategy <S> --timerange <IS> --startup-candle 400 800 1200`. Chỉ báo lệch > 0.1% → tăng `startup_candle_count` hoặc đổi chỉ báo.
 5. **Backtest:**
@@ -38,7 +38,8 @@ Tham số: `$ARGUMENTS` = `<StrategyName> [mode]`
      --enable-protections --breakdown month --export trades
    ```
    Thêm `--timeframe-detail` khung nhỏ hơn nếu có dữ liệu. Mode `full`: chạy thêm bản **vào trễ 1 nến** (subclass
-   dịch `enter_*` đi 1 nến) và tính **mua-giữ** cùng danh mục, cùng dải (`user_data/research/buy_and_hold.py`).
+   dịch `enter_*` đi 1 nến) và tính **mua-giữ** cùng danh mục, cùng dải (`mce.portfolio.simulate` với trọng số
+   cố định).
 6. **Đánh giá:** `.venv/Scripts/python.exe .claude/skills/validate-strategy/summarize_backtest.py --strategy <S>` → bảng PASS/FAIL theo ngưỡng.
 7. **Báo cáo** cho người dùng (tiếng Việt) và lưu vào `user_data/reports/<YYYY-MM-DD>-<S>-<mode>.md`. Báo cáo gồm:
    - giả định: dải thời gian, phí, danh sách cặp, survivorship bias

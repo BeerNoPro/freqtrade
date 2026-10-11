@@ -57,7 +57,7 @@ lên GitHub).
 | **Bootstrap** | Cách tính CI bằng cách "xáo lại" dữ liệu hàng nghìn lần, theo từng tuần để không tự lừa mình |
 | **BH (Benjamini–Hochberg)** | Hiệu chỉnh khi thử nhiều ý tưởng cùng lúc. Thử 100 ý tưởng thì kiểu gì cũng có vài cái "trông đẹp" do may mắn; BH loại bớt những cái đó |
 | **Causal / lookahead** | Causal = chỉ dùng thông tin đã có tại thời điểm đó. Lookahead = vô tình dùng dữ liệu tương lai, làm backtest đẹp giả tạo. Hệ thống có test tự động chặn lỗi này |
-| **IS / holdout** | IS (2023-01 → 2025-06) dùng để nghiên cứu. Holdout (2025-07 → nay) được khóa lại và chỉ mở **một lần** để kiểm tra cuối |
+| **IS / holdout** | Chỉ dùng dữ liệu gần (từ 2025). IS (2025-01 → 2026-03) dùng để nghiên cứu. Holdout (2026-04 → nay) được khóa lại và chỉ mở **một lần** để kiểm tra cuối |
 | **Fingerprint** | "Dấu vân tay" của bộ kinh nghiệm, ghi lại trước khi chạy. Nó chứng minh không ai sửa công thức sau khi đã thấy kết quả |
 | **Brier skill** | Điểm cho dự báo xác suất. > 0 nghĩa là dự báo tốt hơn câu trả lời "lúc nào cũng nói tỉ lệ trung bình" |
 
@@ -121,5 +121,6 @@ Tối ưu trên dữ liệu cũ là "học thuộc bài cũ". Trên dữ liệu 
 - Đo trạng thái thị trường (biến động cao/thấp) để đặt SL/TP và khối lượng hợp lý. Đây là điều hệ thống làm tốt nhất.
 
 **Bot tín hiệu chính dựa vào đâu?**
-Một chiến lược nền đi theo xu hướng ở khung 4h. Mọi cải tiến về sau (setup 1h, bộ lọc nhận định) chỉ được giữ lại nếu
-thắng chiến lược nền trên cùng dữ liệu. Xem [signal-bot-workflow.md](signal-bot-workflow.md).
+Một strategy danh mục khung ngày đã qua kiểm định (dữ liệu từ 2025, danh mục chọn coin không nhìn trước). Chưa có
+strategy nào đạt thì bot chưa phát tín hiệu. Bộ lọc nhận định chỉ được thêm nếu làm strategy đó tốt hơn trên cùng dữ
+liệu. Xem [signal-bot-workflow.md](signal-bot-workflow.md).

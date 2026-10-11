@@ -315,6 +315,9 @@ user_data/
 ├── strategies/
 │   └── MyStrategy.py        # Bản sao sample strategy (RSI + TEMA + Bollinger), chưa backtest
 ├── data/binance/            # OHLCV đã tải: BTC/USDT, ETH/USDT (5m, 1h) — spot
+├── research/                # Riêng tư: STATE.md, thresholds.json, fingerprints.jsonl, script nghiên cứu,
+│                            #   pit/ (nến ngày + funding mọi perp từ 2024), derivs/ (OI, long/short từ collector)
+├── reports/                 # Báo cáo nghiên cứu (không commit)
 ├── tradesv3.dryrun.sqlite   # DB dry-run
 ├── backtest_results/        # Kết quả backtest (.zip)
 ├── hyperopt_results/        # Kết quả hyperopt (.fthypt)

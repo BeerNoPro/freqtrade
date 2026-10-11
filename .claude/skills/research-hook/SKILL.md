@@ -24,12 +24,13 @@ Tham số: `$ARGUMENTS` = `<file hook> [khung]`. Không có file → tạo mới
    ../../.venv/Scripts/python.exe run_event_study.py --hooks ../../<file> --datadir ../../user_data/data/binance \
      --out ../../user_data/reports --timeframe 1h --horizons 1 4 12 24 --tag <tên>     # 4h: --horizons 1 3 6 12
    ```
-   Thiếu dữ liệu → `download-data --config user_data/config_futures.json --timeframes 1h 4h --timerange 20220601-
+   Thiếu dữ liệu → `download-data --config user_data/config_futures.json --timeframes 1h 4h --timerange 20240101-
    --candle-types futures funding_rate mark index premiumIndex`.
-6. **Scoreboard** nếu có nhiều khung: chỉnh `FILES` trong `user_data/research/indicator_scoreboard.py`, chạy với
-   `PYTHONIOENCODING=utf-8 PYTHONPATH=.`. Hiệu chỉnh BH trên **toàn bộ** phép thử.
+6. **Scoreboard** nếu có nhiều khung: `user_data/research/indicator_scoreboard.py <tag> <các file summary.csv>`,
+   chạy với `PYTHONIOENCODING=utf-8 PYTHONPATH=.`. Hiệu chỉnh BH trên **toàn bộ** phép thử.
 7. **Báo cáo** `user_data/reports/<tên>.md` bằng lời thường: bảng horizon chính, đạt/không theo cổng (≥ 200 sự kiện,
-   lift có ý nghĩa sau BH, cùng dấu ≥ 2/3 năm và ≥ 60% cặp, dương sau phí 0,12%), và điều **không** được kết luận.
+   lift có ý nghĩa sau BH, cùng dấu ≥ 2/3 năm và ≥ 60% cặp, dương sau phí 0,12%; IS mặc định là dải trong
+   `thresholds.json`), và điều **không** được kết luận.
 8. **Cập nhật STATE:** dòng mới trong "Đã thử" (fingerprint, kết quả, báo cáo), cộng số hook vào "số lần thử",
    bài học, hàng đợi.
 

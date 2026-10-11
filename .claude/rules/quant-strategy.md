@@ -26,12 +26,20 @@ Thiết kế gốc: [docs/signal-bot-workflow.md](../../docs/signal-bot-workflow
 3. Phát triển trên dải IS; dải holdout (OOS) chỉ chạy **một lần** khi người dùng duyệt bộ tham số cuối. Không chỉnh tham số theo kết quả OOS.
 4. Ngưỡng đạt trên OOS: ≥ 150 tín hiệu, profit factor ≥ 1.3, kỳ vọng ≥ +0.2R/tín hiệu, drawdown ≤ 15R, không cặp nào > 30% lợi nhuận.
 
-## Strategy cấp danh mục (tỷ trọng theo ngày, vol-targeting)
+## Dải dữ liệu
+- Chỉ đánh giá trên dữ liệu gần: **2025-01-01 → nay**. Dữ liệu cũ hơn chỉ dùng để làm nóng chỉ báo hoặc cho điều kiện
+  lịch sử của danh mục. Dải IS/holdout hiện hành nằm trong `user_data/research/thresholds.json`.
+- Mẫu ngắn → luôn báo CI bootstrap và nói rõ độ tin cậy thấp.
+
+## Strategy cấp danh mục (tỷ trọng theo ngày, vol-targeting, long-short)
 Cổng R/lệnh ở trên không áp dụng được cho strategy giữ vị thế dài và tái cân bằng. Dùng cổng danh mục (backtester
-`scripts/research/mce/portfolio.py`, sau đó port sang Freqtrade và đối chiếu):
-- Sharpe sau phí + funding ≥ 1,0 **và** cao hơn BTC mua-giữ có cùng vol-target.
-- Max drawdown ≤ 35%; dương ở ≥ 2/3 số năm; không cặp nào > 30% lợi nhuận.
-- Vẫn dương khi phí 0,10%/chiều; Deflated Sharpe > 0 với số lần thử cộng dồn trong `user_data/research/STATE.md`.
+`scripts/research/mce/portfolio.py` trên danh mục point-in-time `mce.universe.point_in_time_members`, sau đó port sang
+Freqtrade và đối chiếu):
+- Sharpe sau phí + funding ≥ 1,0, **cận dưới CI bootstrap khối 20 ngày (5%) > 0**, và cao hơn BTC mua-giữ có
+  vol-target 25%.
+- Max drawdown ≤ 35%; dương ở ≥ 2/3 số quý; không coin nào > 30% lợi nhuận.
+- Vẫn dương khi phí 0,10%/chiều; Deflated Sharpe ≥ 0,5 với số lần thử cộng dồn trong `user_data/research/STATE.md`.
+- Không dùng danh sách coin chọn theo hiện tại (survivorship bias làm phồng Sharpe khoảng 0,5 trong lần kiểm tra trước).
 - Luôn báo kèm: mua-giữ thường, mua-giữ có vol-target, turnover, exposure trung bình.
 
 ## Báo cáo

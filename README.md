@@ -9,7 +9,7 @@ Engine dựa trên [Freqtrade](https://github.com/freqtrade/freqtrade) 2026.9 (G
 
 | File | Nội dung |
 |---|---|
-| [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md) | Thiết kế bot: workflow, công thức tín hiệu, tin nhắn Telegram, kiểm chứng, lộ trình |
+| [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md) | Thiết kế bot: quyết định đã chốt, workflow, tin nhắn Telegram, ánh xạ Freqtrade, lộ trình |
 | [docs/overview.md](docs/overview.md) | Tổng quan engine và các chế độ chạy |
 | [docs/lifecycle.md](docs/lifecycle.md) | Logic chạy chi tiết (đã đối chiếu với code) |
 | [docs/structure.md](docs/structure.md) | Bản đồ source code |
@@ -28,7 +28,7 @@ uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt -e .   
 .venv\Scripts\freqtrade.exe --version
 
 # Tải dữ liệu futures (công khai, không cần API key)
-.venv\Scripts\freqtrade.exe download-data --config user_data\config_futures.json --timeframes 1h 4h --timerange 20221101-
+.venv\Scripts\freqtrade.exe download-data --config user_data\config_futures.json --timeframes 1h 4h --timerange 20240101-
 
 # Backtest
 .venv\Scripts\freqtrade.exe backtesting --config user_data\config_futures.json --strategy <Strategy> `
@@ -41,7 +41,7 @@ uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt -e .   
 .venv\Scripts\freqtrade.exe webserver --config user_data\config_futures.json
 ```
 
-Telegram: tạo bot bằng @BotFather, điền `token` và `chat_id` vào config (xem mục 8 trong [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md)).
+Telegram: tạo bot bằng @BotFather, điền `token` và `chat_id` vào config (xem mục 5 trong [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md)).
 
 ## Kiểm tra chất lượng code
 
