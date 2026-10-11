@@ -94,4 +94,5 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
 | 12 chỉ báo cổ điển × 1h/4h | Không chỉ báo đứng riêng nào đạt; trend 4h nhỉnh hơn 1h; mean-reversion dính bẫy winrate |
 | Regime theo luật | Tách được biên độ tương lai, gần như không tách được hướng → dùng để định cỡ |
 | Trend 4h kiểu turtle, một lookback, trailing chặt | Gần hòa vốn, thua xa mua-giữ |
-| Ensemble Donchian khung ngày + vol-target (tham số gốc của bài báo) | Hướng đầu tiên có lợi thế rõ trên IS: Sharpe cao hơn mua-giữ có vol-target, drawdown thấp, bền với phí và vào trễ. Còn vướng một cổng ổn định theo năm; chi tiết trong STATE |
+| Ensemble Donchian khung ngày + vol-target (tham số gốc của bài báo) | Trên danh sách coin chọn hôm nay thì trông có lợi thế. Trên danh mục point-in-time (top theo thanh khoản tại từng thời điểm, kể cả coin đã delist) phần lớn lợi thế biến mất và thua BTC mua-giữ có vol-target → bác bỏ. Vẫn hơn trend SMA đơn giản và drawdown thấp |
+| Bài học chung | Danh sách coin chọn theo hiện tại làm phồng Sharpe đáng kể, chủ yếu do chọn trúng coin sống sót tăng tốt chứ không phải do né coin chết. Kiểm định danh mục phải dùng danh mục point-in-time (`mce.universe`, `mce.archive`) |
