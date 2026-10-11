@@ -37,9 +37,10 @@ Code nằm ở `scripts/research/mce/` (package `mce`):
 | `features.py` | ATR, ADX, EMA slope theo ATR, percentile/z-score cuốn chiếu, cấu trúc nến, breakout, hạng cắt ngang trung bình của nhiều tín hiệu |
 | `regime.py` | Regime theo luật minh bạch + kiểm tra regime có tách biệt kết quả tương lai không |
 | `hooks.py` | `Hook` (dataclass) + `HookRegistry` + fingerprint |
-| `labels.py` | **Module duy nhất được nhìn tương lai**: lợi suất tương lai theo R, triple-barrier, MFE/MAE, lợi suất mua-giữ N ngày (coin delist thoát ở close cuối), tổng funding trong cửa sổ giữ |
-| `stats.py` | Block bootstrap, Benjamini–Hochberg, Brier, log loss, reliability, Brier skill score |
-| `event_study.py` | Chạy hook × cặp × horizon, so baseline cùng regime, áp go/no-go |
+| `labels.py` | **Module duy nhất được nhìn tương lai**: lợi suất tương lai theo R, triple-barrier, MFE/MAE, lợi suất mua-giữ N ngày (coin delist thoát ở close cuối), tổng funding trong cửa sổ giữ, lợi suất vào trễ, funding giữa hai thời điểm |
+| `stats.py` | Block bootstrap, Benjamini–Hochberg, Brier, log loss, reliability, Brier skill score, hiệu hai trung bình (bootstrap tuần chung) |
+| `event_study.py` | Chạy hook × cặp × horizon, so baseline cùng regime, áp go/no-go; bỏ dòng ngoài danh mục (cột `active`); báo kết quả vào trễ 1 nến |
+| `pit.py` | Khung point-in-time từ kho `pit/`: nến, regime, OI chụp **trước** thời điểm quyết định, cờ thuộc top-N; kho giả để chạy thử |
 | `walkforward.py` | Chia walk-forward cuốn chiếu có purge + embargo |
 | `journal.py` | Forward journal sqlite: ghi nhận định, chấm điểm khi horizon đóng |
 | `recorder.py` | Ghi dữ liệu sàn không lưu lịch sử (mục 9): ghi nối thêm JSONL theo giờ, gộp parquet theo ngày, log khoảng trống |

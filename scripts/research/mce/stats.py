@@ -41,6 +41,37 @@ def cluster_bootstrap_mean(
     }
 
 
+def cluster_bootstrap_diff(
+    a: np.ndarray,
+    a_clusters: np.ndarray,
+    b: np.ndarray,
+    b_clusters: np.ndarray,
+    n_boot: int = 2000,
+    alpha: float = 0.05,
+    seed: int = 0,
+) -> dict[str, float]:
+    """
+    mean(a) - mean(b) with a CI from resampling the shared calendar clusters (e.g. weeks): a
+    drawn week brings its rows of both groups, so common shocks hit both sides of the
+    difference. Draws where a group has no row are skipped.
+    """
+    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+    keep_a, keep_b = np.isfinite(a), np.isfinite(b)
+    a, a_clusters = a[keep_a], np.asarray(a_clusters)[keep_a]
+    b, b_clusters = b[keep_b], np.asarray(b_clusters)[keep_b]
+    codes, uniq = pd.factorize(np.r_[a_clusters, b_clusters])
+    ca, cb, k = codes[: len(a)], codes[len(a) :], len(uniq)
+    sa, na = np.bincount(ca, a, k), np.bincount(ca, minlength=k).astype(float)
+    sb, nb = np.bincount(cb, b, k), np.bincount(cb, minlength=k).astype(float)
+    draws = np.random.default_rng(seed).integers(0, k, size=(n_boot, k))
+    na_d, nb_d = na[draws].sum(axis=1), nb[draws].sum(axis=1)
+    ok = (na_d > 0) & (nb_d > 0)
+    boot = sa[draws].sum(axis=1)[ok] / na_d[ok] - sb[draws].sum(axis=1)[ok] / nb_d[ok]
+    lo, hi = np.quantile(boot, [alpha / 2, 1 - alpha / 2])
+    p = min(1.0, 2 * min(np.mean(boot <= 0), np.mean(boot >= 0)) + 1 / (len(boot) + 1))
+    return {"diff": float(a.mean() - b.mean()), "lo": float(lo), "hi": float(hi), "p": float(p)}
+
+
 def benjamini_hochberg(pvalues: np.ndarray, q: float = 0.05) -> tuple[np.ndarray, np.ndarray]:
     """Return (rejected mask, BH-adjusted p-values). NaNs are never rejected."""
     p = np.asarray(pvalues, dtype=float)

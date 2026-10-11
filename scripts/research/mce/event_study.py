@@ -44,15 +44,21 @@ def _dedupe(rows: np.ndarray, cooldown: int) -> np.ndarray:
 
 
 def _label_frame(df: pd.DataFrame, cfg: StudyConfig) -> pd.DataFrame:
-    """Truncate at the study end so no label reads beyond it, then add forward returns."""
+    """Truncate at the study end so no label reads beyond it, then add forward returns (and the
+    same returns entered one candle later, ``late_fwd_r_<h>``)."""
     cut = df[df["date"] < cfg.end].reset_index(drop=True)
-    return pd.concat([cut, forward_returns_r(cut, list(cfg.horizons))], axis=1)
+    late = forward_returns_r(cut, list(cfg.horizons), delay=1).add_prefix("late_")
+    return pd.concat([cut, forward_returns_r(cut, list(cfg.horizons)), late], axis=1)
 
 
 def pair_events(hook: Hook, pair: str, df: pd.DataFrame, cfg: StudyConfig) -> pd.DataFrame:
+    """Events of ``hook`` on one pair. Rows with ``active`` False (outside the universe at that
+    time), when the column exists, are left out of both the events and the regime baseline."""
     lab = _label_frame(df, cfg)
     sig = hook.signal(lab).to_numpy()
     in_range = (lab["date"] >= cfg.start).to_numpy() & lab["regime"].notna().to_numpy()
+    if "active" in lab:
+        in_range &= lab["active"].fillna(False).to_numpy(dtype=bool)
     rows = _dedupe(np.flatnonzero((sig != 0) & in_range), hook.cooldown or hook.horizon)
     if rows.size == 0:
         return pd.DataFrame()
@@ -69,6 +75,7 @@ def pair_events(hook: Hook, pair: str, df: pd.DataFrame, cfg: StudyConfig) -> pd
         ev[f"ret_{h}"] = signed
         ev[f"excess_{h}"] = signed - baseline
         ev[f"net_{h}"] = signed - ev["fee_r"]
+        ev[f"late_net_{h}"] = ev["side"] * lab[f"late_{col}"].to_numpy()[rows] - ev["fee_r"]
     tb = triple_barrier(lab, rows, ev["side"].to_numpy(), cfg.tp_atr, cfg.sl_atr, hook.horizon)
     ev = pd.concat([ev, tb], axis=1)
     ev["tb_net_r"] = ev["tb_ret_r"] - ev["fee_r"]
@@ -124,6 +131,7 @@ def summarize(events: pd.DataFrame, hooks: list[Hook], cfg: StudyConfig) -> pd.D
                 net_r=net["mean"],
                 net_lo=net["lo"],
                 net_hi=net["hi"],
+                late_net_r=valid[f"late_net_{h}"].mean(),
                 fee_r=valid["fee_r"].mean(),
                 year_share=_sign_share(valid, "year", f"excess_{h}", sign, 1),
                 pair_share=_sign_share(

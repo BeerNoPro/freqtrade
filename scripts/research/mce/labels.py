@@ -9,12 +9,25 @@ import numpy as np
 import pandas as pd
 
 
-def forward_returns_r(df: pd.DataFrame, horizons: list[int]) -> pd.DataFrame:
-    """Unsigned forward move close[t+h] - close[t] in ATR[t] units, per horizon."""
+def forward_returns_r(df: pd.DataFrame, horizons: list[int], delay: int = 0) -> pd.DataFrame:
+    """Unsigned forward move close[t+delay+h] - close[t+delay] in ATR[t] units, per horizon.
+    ``delay`` = 1 is the late-entry check: the same trade entered one candle later."""
     out = {}
+    entry = df["close"].shift(-delay)
     for h in horizons:
-        out[f"fwd_r_{h}"] = (df["close"].shift(-h) - df["close"]) / df["atr"]
+        out[f"fwd_r_{h}"] = (df["close"].shift(-delay - h) - entry) / df["atr"]
     return pd.DataFrame(out, index=df.index)
+
+
+def funding_between(prints: pd.Series, start: pd.Series, end: pd.Series) -> np.ndarray:
+    """Sum of funding prints stamped in (start, end] for each row: what a long position held
+    from ``start`` to ``end`` pays (a short receives it). ``prints``: rates indexed by time."""
+    prints = prints.dropna().sort_index()
+    cum = np.r_[0.0, prints.cumsum().to_numpy()]
+    times = prints.index
+    s = times.searchsorted(pd.DatetimeIndex(start), side="right")
+    e = times.searchsorted(pd.DatetimeIndex(end), side="right")
+    return cum[e] - cum[s]
 
 
 def forward_hold_return(close: pd.DataFrame, hold: int) -> pd.DataFrame:
