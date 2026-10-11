@@ -49,9 +49,13 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
 ## 4. Momentum cắt ngang (cross-sectional)
 - **Cơ chế:** coin mạnh hơn nhóm tiếp tục mạnh hơn trong ngắn/trung hạn.
 - **Bằng chứng:** Liu, Tsyvinski & Wu (2022, JF), "Common Risk Factors in Cryptocurrency": momentum là một nhân tố
-  chính.
-- **Cách dùng:** xếp hạng coin theo lợi suất 1–4 tuần, nghiêng tỷ trọng về coin mạnh trong danh mục trend.
-- **Bẫy:** danh mục nhỏ (15 coin) cho ít độ phân tán; survivorship bias nặng nếu chọn coin theo hiện tại.
+  chính; momentum 1/2/3/4 tuần đều có ý nghĩa trên mẫu 2014–2018 gồm cả coin nhỏ; nhân tố CMOM = top 30% − bottom 30%
+  theo lợi suất 3 tuần, tái cân bằng tuần. Fičura (2023, working paper): coin lớn, thanh khoản có momentum tuần, coin
+  nhỏ thì đảo chiều. Phản chứng: Grobys & Huhta-Halkola thấy momentum cắt ngang yếu khi bỏ coin nhỏ, kém thanh khoản.
+- **Cách dùng:** xếp hạng coin theo lợi suất 1–4 tuần. Luôn **trung lập beta** (trong thị trường giảm, coin thắng
+  thường beta thấp, coin thua beta cao, nên rổ trung lập đô la thực chất đang short thị trường) và tính funding.
+- **Bẫy:** danh mục nhỏ (15–20 coin) cho ít độ phân tán; survivorship bias nặng nếu chọn coin theo hiện tại; chân short
+  trên coin thua thường phải trả funding âm và dễ bị squeeze khi đông người short. Kiểm định trong repo: xem mục 10.
 
 ## 5. Mean-reversion ngắn hạn (ưu tiên thấp)
 - **Cơ chế:** thanh khoản tạm thời mất cân bằng rồi hồi lại.
@@ -104,4 +108,5 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
 | Ensemble Donchian khung ngày + vol-target (tham số gốc của bài báo) | Trên danh sách coin chọn hôm nay thì trông có lợi thế. Trên danh mục point-in-time (top theo thanh khoản tại từng thời điểm, kể cả coin đã delist) phần lớn lợi thế biến mất và thua BTC mua-giữ có vol-target → bác bỏ. Vẫn hơn trend SMA đơn giản và drawdown thấp |
 | Carry funding cắt ngang (long 1/3 funding thấp, short 1/3 funding cao, tái cân bằng tuần, dữ liệu 2025+) | Không đạt: phần funding thu được dương rõ nhưng phần giá âm gần tương đương, Sharpe quanh 0. Funding âm phản ánh xu hướng giảm đúng chứ không phải cơ hội đảo chiều |
 | Mô hình đa yếu tố 4h (logistic trên ~20 đặc trưng: động lượng, biến động, volume, funding, OI, tỷ lệ long/short, bối cảnh BTC; walk-forward; dữ liệu 2025+) | Không đạt: xác suất ngoài mẫu kém hơn tỷ lệ nền và quá tự tin; lợi nhuận nhỏ còn lại chủ yếu là beta phía short trong năm giảm, drawdown lớn. Dữ liệu vị thế gần như không đóng góp. Gộp nhiều tín hiệu yếu không tự tạo ra lợi thế dự báo hướng |
+| Động lượng cắt ngang trung lập beta (top-20 point-in-time, lợi suất 1–4 tuần, long 30% mạnh nhất / short 30% yếu nhất, chân co giãn để beta BTC = 0, giữ 7 ngày, dữ liệu 2025+) | Không đạt: thứ hạng không mang thông tin, phần giá đúng bằng trung vị danh mục chọn ngẫu nhiên. Coin thắng không thắng tiếp sau khi trừ beta; coin thua có giảm thêm nhưng bên short trả funding âm và bị squeeze, mất hết phần lãi. Bản trung lập đô la trông khá hơn chỉ nhờ rò beta |
 | Bài học chung | Danh sách coin chọn theo hiện tại làm phồng Sharpe đáng kể, chủ yếu do chọn trúng coin sống sót tăng tốt chứ không phải do né coin chết. Kiểm định danh mục phải dùng danh mục point-in-time (`mce.universe`, `mce.archive`) |
