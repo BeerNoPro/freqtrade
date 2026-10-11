@@ -6,17 +6,20 @@ argument-hint: "<StrategyName> [smoke|full|oos]"
 
 # /validate-strategy — kiểm chứng strategy
 
-Luật: `.claude/rules/quant-strategy.md`. Thiết kế và ngưỡng: `docs/signal-bot-workflow.md` (mục 7).
+Luật: `.claude/rules/quant-strategy.md`, `.claude/rules/quant-mindset.md`. Thiết kế và ngưỡng: `docs/signal-bot-workflow.md` (mục 7).
+Trạng thái và số lần thử: `user_data/research/STATE.md` (đọc trước, cập nhật sau).
 
 Tham số: `$ARGUMENTS` = `<StrategyName> [mode]`
 - `smoke` (mặc định khi đang code): dải 3 tháng gần nhất trong IS, chỉ để chắc strategy chạy được và có tín hiệu.
 - `full`: toàn bộ dải IS + lookahead + recursive.
-- `oos`: chạy dải holdout **một lần**. Chỉ chạy khi người dùng xác nhận đã chốt tham số.
+- `oos`: chạy dải holdout **một lần**. Chỉ chạy khi người dùng xác nhận trong lượt hiện tại đã chốt tham số.
+  Trước khi chạy: ghi fingerprint (sha256 file strategy) vào `user_data/research/fingerprints.jsonl`; kiểm tra
+  `holdout_runs` trong `user_data/research/thresholds.json`. Khác 0 → **dừng**, báo người dùng. Chạy xong → tăng lên 1.
 
 ## Hằng số
 | Tên | Giá trị |
 |---|---|
-| Config | `user_data/config_futures.json` |
+| Config | `user_data/config_futures.json` (hoặc config backtest riêng, vd `user_data/config_trend_bt.json`) |
 | IS (phát triển) | `20230101-20250701` |
 | OOS (holdout) | `20250701-` (tới hiện tại) |
 | Smoke | `20250301-20250601` |
@@ -34,14 +37,18 @@ Tham số: `$ARGUMENTS` = `<StrategyName> [mode]`
    backtesting --config <config> --strategy <S> --timerange <dải> --fee 0.0006 \
      --enable-protections --breakdown month --export trades
    ```
-   Thêm `--timeframe-detail 5m` nếu có dữ liệu 5m.
+   Thêm `--timeframe-detail` khung nhỏ hơn nếu có dữ liệu. Mode `full`: chạy thêm bản **vào trễ 1 nến** (subclass
+   dịch `enter_*` đi 1 nến) và tính **mua-giữ** cùng danh mục, cùng dải (`user_data/research/buy_and_hold.py`).
 6. **Đánh giá:** `.venv/Scripts/python.exe .claude/skills/validate-strategy/summarize_backtest.py --strategy <S>` → bảng PASS/FAIL theo ngưỡng.
 7. **Báo cáo** cho người dùng (tiếng Việt) và lưu vào `user_data/reports/<YYYY-MM-DD>-<S>-<mode>.md`. Báo cáo gồm:
    - giả định: dải thời gian, phí, danh sách cặp, survivorship bias
    - bảng ngưỡng PASS/FAIL
    - kết quả theo tháng, theo setup (enter_tag), theo chiều long/short
+   - so mốc: mua-giữ, bản vào trễ 1 nến
    - kết luận thẳng thắn và bước tiếp theo đề xuất
    Không làm đẹp kết quả. FAIL thì nói FAIL.
+8. **Cập nhật STATE** (mode `full`/`oos`): thêm dòng vào bảng "Đã thử", tăng số lần thử strategy, ghi bài học và
+   bước tiếp theo. Gợi ý người dùng chạy agent `strategy-reviewer` trước khi tin một kết quả PASS.
 
 ## Lưu ý
 - Pairlist động (`VolumePairList`...) không backtest được: khi backtest, dùng `StaticPairList` với danh sách cặp cố định trong config (ghi rõ survivorship bias).
