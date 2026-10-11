@@ -7,10 +7,19 @@ Bot nội bộ **tính toán và phát tín hiệu** cho Binance USDT-M Futures,
 
 Engine là Freqtrade 2026.9 (GPLv3, giữ `LICENSE` + `NOTICE`). Logic riêng nằm trong `user_data/` (strategy, config). Core `freqtrade/` chỉ sửa trong các việc cắt gọn có kế hoạch.
 
+## Bắt đầu mỗi session (bắt buộc)
+Làm việc như **senior quant researcher + trader crypto futures**: theo checklist và anti-pattern bên dưới, đọc trạng
+thái trước khi đề xuất hay code bất kỳ ý tưởng nào. Không làm lại hướng đã bị bác bỏ.
+@.claude/rules/quant-mindset.md
+@user_data/research/STATE.md
+- Kiến thức mô hình có bằng chứng: [docs/quant-playbook.md](docs/quant-playbook.md) (đọc mục liên quan trước khi chọn hướng).
+- `STATE.md` là file riêng (gitignore). Máy không có file này → hỏi người dùng tình trạng trước khi làm nghiên cứu.
+
 ## Tài liệu (tra mục lục, chỉ đọc mục liên quan — không đọc cả file)
 | File | Nội dung |
 |---|---|
 | [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md) | **Thiết kế bot**: workflow, công thức, tin nhắn, ngưỡng kiểm chứng, lộ trình |
+| [docs/quant-playbook.md](docs/quant-playbook.md) | **Các họ mô hình có bằng chứng** (trend, vol-target, carry...), chuẩn kiểm định, bài học |
 | [docs/market-context-engine.md](docs/market-context-engine.md) | **Nhận định thị trường**: hook, event study, regime, journal (code `scripts/research/mce/`) |
 | [docs/huong-dan-nhan-dinh-thi-truong.md](docs/huong-dan-nhan-dinh-thi-truong.md) | Bản giải thích dễ hiểu của hệ thống nhận định (cho người không chuyên quant) |
 | [docs/lifecycle.md](docs/lifecycle.md) | Logic chạy của engine (đã đối chiếu code) |
@@ -27,7 +36,11 @@ Engine là Freqtrade 2026.9 (GPLv3, giữ `LICENSE` + `NOTICE`). Logic riêng n�
 | Skill | Khi nào dùng |
 |---|---|
 | `/commit` | Commit trên `develop` theo đúng luật: gate (lint, test, quét secret), message tiếng Anh. Không push |
-| `/validate-strategy <Strategy>` | Tải dữ liệu thiếu → lookahead → recursive → backtest → so với ngưỡng đạt |
+| `/validate-strategy <Strategy>` | Tải dữ liệu thiếu → lookahead → recursive → backtest → so với ngưỡng đạt + mua-giữ + vào trễ → cập nhật STATE |
+| `/research-hook <file hook>` | Kiểm định một kinh nghiệm/chỉ báo: chốt giả thuyết → fingerprint → chạy một lần → scoreboard → cập nhật STATE |
+
+Agent định nghĩa sẵn (`.claude/agents/`, chạy khi người dùng gọi tên): `quant-researcher` (thiết kế + chạy kiểm định
+theo checklist), `strategy-reviewer` (phản biện chỉ đọc: overfit, lookahead, phí, so mốc).
 | `/trim-core <module>` | Cắt bớt một phần source upstream an toàn: phân tích phụ thuộc → xóa → kiểm chứng → ghi log |
 
 ## Môi trường & lệnh

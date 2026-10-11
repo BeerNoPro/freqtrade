@@ -26,6 +26,14 @@ Thiết kế gốc: [docs/signal-bot-workflow.md](../../docs/signal-bot-workflow
 3. Phát triển trên dải IS; dải holdout (OOS) chỉ chạy **một lần** khi người dùng duyệt bộ tham số cuối. Không chỉnh tham số theo kết quả OOS.
 4. Ngưỡng đạt trên OOS: ≥ 150 tín hiệu, profit factor ≥ 1.3, kỳ vọng ≥ +0.2R/tín hiệu, drawdown ≤ 15R, không cặp nào > 30% lợi nhuận.
 
+## Strategy cấp danh mục (tỷ trọng theo ngày, vol-targeting)
+Cổng R/lệnh ở trên không áp dụng được cho strategy giữ vị thế dài và tái cân bằng. Dùng cổng danh mục (backtester
+`scripts/research/mce/portfolio.py`, sau đó port sang Freqtrade và đối chiếu):
+- Sharpe sau phí + funding ≥ 1,0 **và** cao hơn BTC mua-giữ có cùng vol-target.
+- Max drawdown ≤ 35%; dương ở ≥ 2/3 số năm; không cặp nào > 30% lợi nhuận.
+- Vẫn dương khi phí 0,10%/chiều; Deflated Sharpe > 0 với số lần thử cộng dồn trong `user_data/research/STATE.md`.
+- Luôn báo kèm: mua-giữ thường, mua-giữ có vol-target, turnover, exposure trung bình.
+
 ## Báo cáo
 - Luôn báo **kết quả thật**, kể cả khi không đạt. Không chọn lọc giai đoạn đẹp.
 - Ghi rõ giả định: phí, khoảng thời gian, danh sách cặp (có survivorship bias hay không).
