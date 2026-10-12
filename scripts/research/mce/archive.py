@@ -9,7 +9,8 @@ Positioning metrics (open interest, long/short ratios) only live ~30 days in the
 history comes from the archive's daily ``metrics`` files.
 Public endpoints (no API key). Files are appended idempotently to
 ``<outdir>/<kind>/<SYMBOL>.parquet`` with ``kind`` in ``klines_<interval>`` / ``funding`` /
-``metrics``.
+``metrics``. The files keep what the exchange serves; research reads (``read_store_file``,
+``load_wide``) drop the fake rows it keeps serving after a delisting.
 """
 
 import io
@@ -21,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import ccxt
+import numpy as np
 import pandas as pd
 import requests
 
@@ -287,13 +289,70 @@ def sync_metrics(
     return _append(path, old, new)
 
 
-def load_wide(outdir: Path, kind: str, field: str, symbols: list[str]) -> pd.DataFrame:
-    """One column per symbol (missing files skipped), rows = dates (UTC), sorted."""
+def traded(k: pd.DataFrame) -> pd.Series:
+    """Candles with at least one trade (quote volume > 0)."""
+    return k["quote_volume"] > 0
+
+
+def drop_dead_tail(k: pd.DataFrame) -> pd.DataFrame:
+    """Candles up to the last one with a trade. After a delisting the klines endpoint keeps
+    serving flat zero-volume candles up to today; idle candles inside the series stay."""
+    hit = np.flatnonzero(traded(k).to_numpy())
+    return k.iloc[: hit[-1] + 1 if hit.size else 0].reset_index(drop=True)
+
+
+def trading_end(outdir: Path, symbol: str, end: pd.Timestamp | None = None) -> pd.Timestamp | None:
+    """Close time of the coin's last candle with a trade before ``end``: from its 4h candles when
+    some are stored before ``end``, else from its daily ones. NaT when none of them traded, None
+    without any candle (nothing to judge by)."""
+    for interval in ("4h", "1d"):
+        k = read_store_file(outdir, f"klines_{interval}", symbol, end, raw=True)
+        if k is None or k.empty:
+            continue
+        k = drop_dead_tail(k)
+        return k["date"].iloc[-1] + pd.Timedelta(INTERVAL_MS[interval], "ms") if len(k) else pd.NaT
+    return None
+
+
+def read_store_file(
+    outdir: Path, kind: str, symbol: str, end: pd.Timestamp | None = None, raw: bool = False
+) -> pd.DataFrame | None:
+    """One stored file, rows dated strictly before ``end`` (every row without it), sorted; unless
+    ``raw``, without the exchange's fake rows: candles after the last one with a trade
+    (``drop_dead_tail``) and funding prints after the coin's ``trading_end``. Every research read
+    goes through it; the downloads and the audit read the raw files."""
+    path = _path(outdir, kind, symbol)
+    if not path.exists():
+        return None
+    df = pd.read_parquet(path)
+    if end is not None:
+        df = df[df["date"] < end]
+    df = df.sort_values("date").reset_index(drop=True)
+    if raw:
+        return df
+    if kind.startswith("klines_"):
+        return drop_dead_tail(df)
+    if kind == "funding":
+        last = trading_end(outdir, symbol, end)
+        if last is not None:  # NaT (no trade at all) keeps no print
+            df = df[df["date"] <= last].reset_index(drop=True)
+    return df
+
+
+def load_wide(
+    outdir: Path,
+    kind: str,
+    field: str,
+    symbols: list[str],
+    end: pd.Timestamp | None = None,
+    raw: bool = False,
+) -> pd.DataFrame:
+    """One column per symbol (missing files skipped), rows = dates (UTC) before ``end``, sorted,
+    read with ``read_store_file`` (without fake rows unless ``raw``)."""
     cols = {}
     for symbol in symbols:
-        path = _path(outdir, kind, symbol)
-        if path.exists():
-            df = pd.read_parquet(path, columns=["date", field])
+        df = read_store_file(outdir, kind, symbol, end, raw)
+        if df is not None:
             cols[symbol] = df.set_index("date")[field]
     if not cols:
         return pd.DataFrame()

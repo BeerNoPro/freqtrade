@@ -4,6 +4,12 @@ written from their written specification to cross-check ``mce`` result by result
 ``mce`` (a test enforces it): only pandas, numpy and TA-Lib (ATR, ADX), and it reads the parquet
 store directly. Specification, in the engine's own terms:
 
+- Store reads: a candle trades when its quote volume is > 0. Candles after the last one that
+  traded (among those dated before ``end``) are dropped: Binance keeps serving flat zero-volume
+  candles, and funding prints, for delisted contracts. Funding prints after the close of the last
+  traded candle (4h candles when stored before ``end``, else daily) are dropped. Idle candles
+  inside the series stay in the price path, but an idle day is not a close for the universe and
+  an idle 4h bar is not in the universe.
 - Point-in-time universe: a coin is eligible on day t with ``min_history`` consecutive daily
   closes up to t; liquidity = median quote volume of the last ``volume_window`` days (all
   present); the top ``n`` eligible coins by liquidity at the close of each month's last day are
@@ -331,14 +337,41 @@ def total_return(net: pd.Series) -> float:
 # ------------------------------------------------------------------ store readers and pipelines
 
 
-def read(store: Path, kind: str, symbol: str, end: pd.Timestamp) -> pd.DataFrame | None:
-    """One stored file, rows dated strictly before ``end``, duplicates dropped, sorted."""
+def read(
+    store: Path, kind: str, symbol: str, end: pd.Timestamp, raw: bool = False
+) -> pd.DataFrame | None:
+    """One stored file, rows dated strictly before ``end``, duplicates dropped, sorted; then
+    (unless ``raw``) the store's fake rows removed: candles after the last one with a trade, and
+    funding prints after the close of the coin's last trade (``last_trade_close``)."""
     path = store / kind / f"{symbol}.parquet"
     if not path.exists():
         return None
     df = pd.read_parquet(path)
-    df = df[df["date"] < end].drop_duplicates("date").sort_values("date")
-    return df.reset_index(drop=True)
+    df = df[df["date"] < end].drop_duplicates("date").sort_values("date").reset_index(drop=True)
+    if raw:
+        return df
+    if kind.startswith("klines_"):
+        trades = np.flatnonzero(df["quote_volume"].to_numpy(dtype=float) > 0)
+        keep = trades[-1] + 1 if trades.size else 0
+        return df.iloc[:keep].reset_index(drop=True)
+    if kind == "funding":
+        last = last_trade_close(store, symbol, end)
+        if last is not None:
+            return df[df["date"] <= last].reset_index(drop=True)  # NaT drops every print
+    return df
+
+
+def last_trade_close(store: Path, symbol: str, end: pd.Timestamp) -> pd.Timestamp | None:
+    """Close time of the coin's last candle with a trade before ``end``, from its 4h candles when
+    some are stored before ``end``, else from its daily ones. NaT when none of them traded, None
+    without any candle (nothing to judge funding by)."""
+    for kind, bar in (("klines_4h", BAR_4H), ("klines_1d", DAY)):
+        stored = read(store, kind, symbol, end, raw=True)
+        if stored is None or stored.empty:
+            continue
+        traded = stored[stored["quote_volume"] > 0]
+        return traded["date"].iloc[-1] + bar if len(traded) else pd.NaT
+    return None
 
 
 def daily_panel(store: Path, symbols: list[str], field: str, end: pd.Timestamp) -> pd.DataFrame:
@@ -351,13 +384,16 @@ def daily_panel(store: Path, symbols: list[str], field: str, end: pd.Timestamp) 
 
 
 def universe(store: Path, end: pd.Timestamp, n: int) -> pd.DataFrame:
-    """Daily top-``n`` membership of every candidate from the first stored day to end - 1 day."""
+    """Daily top-``n`` membership of every candidate from the first stored day to end - 1 day.
+    A day without a trade (a halt inside the series) is not a close."""
     names = json.loads((store / "symbols.json").read_text(encoding="utf-8"))["candidates"]
     close = daily_panel(store, names, "close", end)
     days = pd.date_range(close.index.min(), end - DAY, freq="D")
     close = close.reindex(days).dropna(axis=1, how="all")
     volume = daily_panel(store, list(close.columns), "quote_volume", end).reindex(days)
-    return pit_members(close, volume[close.columns], n, 30, 90)
+    volume = volume[close.columns]
+    traded = volume > 0
+    return pit_members(close.where(traded), volume.where(traded), n, 30, 90)
 
 
 def frame_4h(
@@ -380,7 +416,8 @@ def frame_4h(
     now = snapshot_before(f["date"] + BAR_4H, oi, BAR_4H)
     prev = snapshot_before(f["date"], oi, BAR_4H)
     f["oi_z"] = rolling_z(pd.Series(np.log(now) - np.log(prev)), window)
-    f["active"] = bar_active(members, symbol, f["date"], BAR_4H)
+    traded = k["quote_volume"].to_numpy(dtype=float) > 0  # an idle bar is never in the universe
+    f["active"] = bar_active(members, symbol, f["date"], BAR_4H) & traded
     return f
 
 

@@ -75,9 +75,11 @@ def _klines_fn(exchange: ccxt.Exchange, outdir: Path, interval: str) -> Callable
 def first_member_dates(
     outdir: Path, symbols: list[str], n: int, min_history: int
 ) -> dict[str, pd.Timestamp]:
-    """Symbol -> first day it is a member of the top ``n`` point-in-time universe."""
-    close = load_wide(outdir, "klines_1d", "close", symbols)
-    volume = load_wide(outdir, "klines_1d", "quote_volume", symbols)
+    """Symbol -> first day it is a member of the top ``n`` point-in-time universe, ranked on the
+    raw candles (fake ones included): the set decides which files ``prune`` keeps, so it must not
+    shrink when the research loader changes how it reads them."""
+    close = load_wide(outdir, "klines_1d", "close", symbols, raw=True)
+    volume = load_wide(outdir, "klines_1d", "quote_volume", symbols, raw=True)
     days = pd.date_range(close.index.min(), close.index.max(), freq="D")
     members = point_in_time_members(
         close.reindex(days), volume.reindex(days), n=n, min_history=min_history

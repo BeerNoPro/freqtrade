@@ -1,7 +1,12 @@
-"""Forward runner: product message format (no network)."""
+"""Forward runner: product message format and trend exits (no network)."""
 
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from mce import journal
 from mce.journal import Setup
-from run_forward import LABEL, message
+from run_forward import LABEL, Runner, message
 
 
 def _setup(**kw) -> Setup:
@@ -41,3 +46,25 @@ def test_message_of_a_trend_setup_and_a_skipped_one() -> None:
     trend = message(_setup(side=-1, stop=110.0, target=None, max_bars=None, timeframe="1d"))
     assert "SHORT SOLUSDT" in trend and "trailing stop" in trend and "SL 110 (+10.0%)" in trend
     assert "BỎ QUA" in message(_setup(status="skipped_cost", cost_r=0.3))
+
+
+def test_close_trend_leaves_a_setup_without_exit_price_pending(tmp_path: Path) -> None:
+    """A coin that stops trading while a trend setup is open has no exit price (the store drops
+    its fake candles): the setup stays without outcome instead of failing every cycle."""
+    runner = Runner.__new__(Runner)
+    runner.conn = journal.connect(tmp_path / "journal.sqlite")
+    runner.pit, runner.fee = tmp_path / "pit", 0.0012
+    trend = {"timeframe": "1d", "target": None, "max_bars": None, "side": -1, "stop": 110.0}
+    for pair in ("DEADUSDT", "LIVEUSDT"):
+        journal.record_setup(runner.conn, _setup(**trend, pair=pair))
+    day = pd.Timestamp("2026-10-12 12:00", tz="UTC")
+    trades = pd.DataFrame(
+        {
+            "pair": ["DEADUSDT", "LIVEUSDT"],
+            "candle_date": [day, day],
+            "exit_date": [day + pd.Timedelta(days=2)] * 2,
+            "exit_price": [np.nan, 90.0],
+        }
+    )
+    assert runner.close_trend(trades) == 1
+    assert journal.pending(runner.conn)["pair"].tolist() == ["DEADUSDT"]

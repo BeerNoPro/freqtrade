@@ -16,10 +16,12 @@ from oracle import (
     ensemble,
     events_with_cooldown,
     forward_r,
+    frame_4h,
     funding_sum,
     holding_day_funding,
     merge_oi,
     pit_members,
+    read,
     regime_baseline,
     rolling_z,
     sharpe,
@@ -27,6 +29,7 @@ from oracle import (
     snapshot_before,
     target_weights,
     total_return,
+    universe,
     vol_scalar,
     week_bootstrap,
 )
@@ -247,3 +250,87 @@ def test_sharpe_and_total_return() -> None:
     sd = math.sqrt(((0.01 - mean) ** 2 + (-0.01 - mean) ** 2 + (0.02 - mean) ** 2) / 2)
     assert sharpe(net) == pytest.approx(mean * 365 / (sd * math.sqrt(365)))
     assert total_return(net) == pytest.approx(1.01 * 0.99 * 1.02 - 1)
+
+
+# ------------------------------------------------------------------ store reads without fake rows
+
+
+def _candles(dates: pd.DatetimeIndex, quote_volume: list[float] | np.ndarray) -> pd.DataFrame:
+    """Candles at 1.0 except that every traded candle adds 1 to the close (flat when idle)."""
+    qv = np.asarray(quote_volume, dtype=float)
+    close = 1.0 + np.cumsum(qv > 0)
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "open": close,
+            "high": close + 0.5 * (qv > 0),
+            "low": close - 0.5 * (qv > 0),
+            "close": close,
+            "volume": qv,
+            "quote_volume": qv,
+        }
+    )
+
+
+def _save(store: Path, kind: str, symbol: str, df: pd.DataFrame) -> None:
+    (store / kind).mkdir(parents=True, exist_ok=True)
+    df.to_parquet(store / kind / f"{symbol}.parquet", index=False)
+
+
+def test_read_drops_the_fake_tail_and_the_prints_after_the_last_trade(tmp_path: Path) -> None:
+    days = pd.date_range("2026-06-20", periods=7, freq="D", tz="UTC")
+    _save(tmp_path, "klines_1d", "X", _candles(days, [5, 0, 7, 3, 0, 0, 0]))  # halt 06-21
+    bars = pd.date_range("2026-06-20", periods=42, freq="4h", tz="UTC")
+    _save(tmp_path, "klines_4h", "X", _candles(bars, [1.0] * 21 + [0.0] * 21))  # last 06-23 08:00
+    prints = pd.date_range("2026-06-20", periods=21, freq="8h", tz="UTC")
+    _save(tmp_path, "funding", "X", pd.DataFrame({"date": prints, "funding_rate": 1e-4}))
+    _save(tmp_path, "klines_1d", "Y", _candles(days[:4], [5, 6, 0, 0]))  # no 4h file
+    _save(tmp_path, "funding", "Y", pd.DataFrame({"date": prints[:12], "funding_rate": 1e-4}))
+    end = _t("2026-07-01")
+
+    d = read(tmp_path, "klines_1d", "X", end)
+    assert d["date"].tolist() == list(days[:4])  # 06-20 .. 06-23, the 06-21 halt kept
+    assert read(tmp_path, "klines_1d", "X", _t("2026-06-22"))["date"].tolist() == list(days[:1])
+    assert len(read(tmp_path, "klines_4h", "X", end)) == 21
+    # the last trade closes at 06-23 12:00: prints at 00:00, 08:00 of 06-23 stay, 16:00 goes
+    assert read(tmp_path, "funding", "X", end)["date"].max() == _t("2026-06-23 08:00")
+    # Y trades on 06-20 and 06-21 (daily candles only): last close 06-22 00:00, its print stays
+    assert read(tmp_path, "funding", "Y", end)["date"].max() == _t("2026-06-22")
+    assert len(read(tmp_path, "funding", "Y", end, raw=True)) == 12
+
+
+def test_universe_ignores_fake_candles_and_halted_days(tmp_path: Path) -> None:
+    """A (10/day) halts 04-10 .. 04-12; B (5/day) and C (1/day) trade all along; D (100/day)
+    stops after 03-20 and the exchange keeps serving fake candles. Top 1, 90-day history."""
+    days = pd.date_range("2021-01-01", "2021-06-30", freq="D", tz="UTC")
+    halt = (days >= _t("2021-04-10")) & (days <= _t("2021-04-12"))
+    _save(tmp_path, "klines_1d", "A", _candles(days, np.where(halt, 0.0, 10.0)))
+    _save(tmp_path, "klines_1d", "B", _candles(days, [5.0] * len(days)))
+    _save(tmp_path, "klines_1d", "C", _candles(days, [1.0] * len(days)))
+    _save(tmp_path, "klines_1d", "D", _candles(days, np.where(days <= _t("2021-03-20"), 100.0, 0)))
+    (tmp_path / "symbols.json").write_text('{"candidates": ["A", "B", "C", "D"]}', "utf-8")
+    m = universe(tmp_path, _t("2021-07-01"), 1)
+
+    def member(day: str) -> set[str]:
+        return {c for c in m.columns if m.loc[_t(day), c]}
+
+    assert member("2021-03-30") == set()  # 89 closes at most: nobody eligible yet
+    # March ranking: D has no close since 03-21 (with its fake candles it would win, median 100)
+    assert member("2021-03-31") == {"A"}
+    assert member("2021-04-09") == {"A"} and member("2021-04-10") == set()  # halted: out
+    assert member("2021-04-13") == {"A"}  # trading again, the March ranking still holds
+    # April ranking: A has 18 consecutive traded days (< 90), so B; same at the May, June ones
+    assert member("2021-04-30") == {"B"} and member("2021-06-30") == {"B"}
+    assert not m["D"].any() and not m["C"].any()
+
+
+def test_frame_4h_bars_without_trade_are_not_in_the_universe(tmp_path: Path) -> None:
+    bars = pd.date_range("2021-01-01", periods=300, freq="4h", tz="UTC")
+    qv = np.ones(300)
+    qv[100:106] = 0.0  # one idle day inside the series
+    _save(tmp_path, "klines_4h", "X", _candles(bars, qv))
+    days = pd.date_range("2020-12-31", "2021-03-01", freq="D", tz="UTC")
+    members = pd.DataFrame({"X": True}, index=days)
+    f = frame_4h(tmp_path, "X", _t("2021-03-01"), members)
+    assert len(f) == 300  # interior idle bars stay in the price path
+    assert not f["active"].iloc[100:106].any() and f["active"].drop(index=range(100, 106)).all()

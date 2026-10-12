@@ -43,6 +43,8 @@ bộ ghi thời gian thực (recorder): dữ liệu sàn không lưu lịch sử
 | `portfolio.py` | Backtester danh mục tỷ trọng mục tiêu khung ngày (phí, funding, vol-target, bootstrap khối, Deflated Sharpe) |
 | `recorder.py` | Bộ ghi dữ liệu không có lịch sử (mục 3) + báo cáo độ phủ |
 | `audit.py` | Kiểm toán kho: nến (trùng, sai thứ tự, OHLC vô lý, khoảng trống, nến giả sau delist, mã dùng lại tên), funding, metrics, nến ngày khớp nến 4h; đối chiếu mẫu với API fapi và data.binance.vision qua `Sources` (không gọi mạng trong module) |
+| `listings.py` | Mã đổi tên và mã dùng lại tên (đánh dấu tay), đo trên kho (ngày, khoảng nghỉ, tỷ lệ giá), gợi ý cặp chưa đánh dấu |
+| `snapshot.py` | Ảnh chụp trước/sau: digest bảng và so từng dòng theo khóa (chứng minh đầu ra luật đã đăng ký không đổi, hoặc liệt kê đủ chênh lệch) |
 
 Script: `download_pit_universe.py` (kho point-in-time; `--plan-only` ước lượng khối lượng tải), `record_market.py` +
 `schedule_recorder.ps1` (bộ ghi), `recorder_coverage.py` (độ phủ), `run_forward.py` + `schedule_forward.ps1` (runner
@@ -60,9 +62,26 @@ Từ 2024-01 (2024 chỉ để làm nóng chỉ báo; đánh giá từ 2025).
 **Kiểm toán kho** (`audit_store.py`, task `freqtrade-data-audit` 03:00 UTC): quét offline mọi file, đối chiếu mẫu với
 API và kho lưu trữ (`--verify N`, phân tầng theo năm, tất định theo `--seed`). Báo cáo
 `user_data/reports/audit/latest/<kho>/` (`summary.md`, `issues.csv`, `symbols.csv`, `zombie_members.csv`,
-`verify.csv`); mã thoát 1 khi có lỗi critical mới. Lỗi đã đối chiếu tay ghi ở `user_data/research/audit_known.csv`
-(mức `known`). Bẫy đã gặp: API trả nến giả (giá đứng yên, khối lượng 0) và funding cho mã đã delist đến tận hôm nay,
-nên ngày delist = ngày cuối có khối lượng > 0; mã đổi tên trông như niêm yết mới; tên mã có thể bị dùng lại.
+`listings.csv`, `verify.csv`); mã thoát 1 khi có lỗi critical mới. Lỗi đã đối chiếu tay ghi ở
+`user_data/research/audit_known.csv` (mức `known`). `--dates-all`: đối chiếu tháng niêm yết/delist của **mọi** mã
+với kho lưu trữ (tìm đủ mã dùng lại tên). Bẫy đã gặp: API trả nến giả (giá đứng yên, khối lượng 0) và funding cho mã
+đã delist đến tận hôm nay; mã đổi tên trông như niêm yết mới; tên mã có thể bị dùng lại.
+
+**Đọc sạch (từ 2026-10-13, `mce.archive.read_store_file`, dùng bởi `pit.read_store` và `load_wide`):** kho giữ dữ
+liệu thô; mọi đường đọc nghiên cứu bỏ dòng giả.
+- Nến có giao dịch ⇔ `quote_volume > 0`. Nến sau nến có giao dịch cuối cùng (trong phần đọc, cắt theo `end` trước)
+  bị xóa: lệnh còn mở lúc mã ngừng giao dịch **không có kết quả** (NaN, event study bỏ qua; lệnh trend có giá thoát
+  NaN, runner để nguyên không chấm). Người dùng chọn xóa thay vì giữ giá phẳng làm giá thanh toán (2026-10-13).
+- Nến 0 khối lượng giữa chuỗi (tạm ngưng, nến trước khi mở giao dịch) giữ trong đường giá nhưng không tính là có mặt
+  hay lịch sử 90 ngày của danh mục, và nến 4h đó không `active` (không sự kiện, không vào mức nền).
+- Funding in sau thời điểm đóng của nến có giao dịch cuối (nến 4h nếu có trước `end`, không thì nến ngày) bị bỏ.
+- Ngoại lệ: `download_pit_universe.py` chọn coin "từng top-25" trên dữ liệu thô (`raw=True`), vì đổi danh sách đó sẽ
+  làm `prune` xóa file; kiểm toán đọc file thô.
+
+**Mã đổi tên / dùng lại tên** (`mce.listings`, đánh dấu theo thông báo của Binance, người dùng xác nhận): MATIC→POL,
+RNDR→RENDER, FTM→S, BNX→FORM (mã mới không phải niêm yết mới: `is_new_listing`); LIT là token khác từ 2025-12-23
+(lịch sử token cũ chỉ còn ở kho lưu trữ, `pit_hist` thiếu nó). `rename_candidates` gợi ý cặp chưa đánh dấu (mã ngừng +
+mã mới trong ≤ 14 ngày, giá lệch ≤ 15%): chỉ là gợi ý, phần lớn trùng hợp; kiểm toán báo `rename_suspect`.
 
 **Kho `data.binance.vision`** có lịch sử (tải khi cần): nến mọi khung (cả mark, index, premium), funding, lệnh khớp,
 OI + long/short + taker mỗi 5 phút (`metrics`), độ dày sổ lệnh ±0,2–5% mỗi 30 giây (`bookDepth`).

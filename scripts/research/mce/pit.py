@@ -5,7 +5,10 @@ Point-in-time research frames built from the store of ``download_pit_universe.py
 Row t = candle opened at ``date`` and decided at its close ``time = date + bar``. Every column is
 causal: price features use candles <= t; positioning snapshots (open interest) are the latest
 taken strictly before the decision time; ``active`` says whether the coin belongs to the top-N
-point-in-time universe ranked on the last daily candle closed at the decision time.
+point-in-time universe ranked on the last daily candle closed at the decision time and the bar
+itself traded. Reads drop the fake rows served after a delisting (``mce.archive.read_store_file``):
+candles after the last trade and funding after it. Idle candles inside a series (a halt) stay in
+the price path but never count: not a close for the universe, never an active bar.
 """
 
 import json
@@ -14,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from mce.archive import load_wide
+from mce.archive import load_wide, read_store_file, traded
 from mce.features import add_core_features, rolling_zscore
 from mce.regime import RegimeRules, add_regime
 from mce.universe import point_in_time_members
@@ -28,26 +31,26 @@ def bars_per_30d(timeframe: str) -> int:
 
 
 def read_store(pit: Path, kind: str, symbol: str, end: pd.Timestamp) -> pd.DataFrame | None:
-    """One stored file cut strictly before ``end`` (no row at or after it is ever read)."""
-    path = pit / kind / f"{symbol}.parquet"
-    if not path.exists():
-        return None
-    df = pd.read_parquet(path)
-    return df[df["date"] < end].sort_values("date").reset_index(drop=True)
+    """One stored file cut strictly before ``end`` (no row at or after it is ever read), without
+    the fake rows served after a delisting (``mce.archive.read_store_file``)."""
+    return read_store_file(pit, kind, symbol, end)
 
 
 def daily_members(
     pit: Path, end: pd.Timestamp, top_n: int = 20, volume_window: int = 30, min_history: int = 90
 ) -> pd.DataFrame:
-    """Top-N point-in-time membership per calendar day from every candidate's daily candles."""
+    """Top-N point-in-time membership per calendar day from every candidate's daily candles. A
+    day without any trade (a halt, candles before trading starts) is not a close."""
     meta = json.loads((pit / "symbols.json").read_text(encoding="utf-8"))
-    close = load_wide(pit, "klines_1d", "close", meta["candidates"])
-    close = close[close.index < end]
+    close = load_wide(pit, "klines_1d", "close", meta["candidates"], end)
     days = pd.date_range(close.index.min(), end - pd.Timedelta(days=1), freq="D")
     close = close.reindex(days).dropna(axis=1, how="all")
-    volume = load_wide(pit, "klines_1d", "quote_volume", list(close.columns))
-    volume = volume[volume.index < end].reindex(days)[close.columns]
-    return point_in_time_members(close, volume, top_n, volume_window, min_history)
+    volume = load_wide(pit, "klines_1d", "quote_volume", list(close.columns), end)
+    volume = volume.reindex(days)[close.columns]
+    live = volume > 0
+    return point_in_time_members(
+        close.where(live), volume.where(live), top_n, volume_window, min_history
+    )
 
 
 def bar_membership(members: pd.DataFrame, symbol: str, decision: pd.Series) -> np.ndarray:
@@ -94,7 +97,8 @@ def coin_frame(
     pit: Path, symbol: str, timeframe: str, end: pd.Timestamp, members: pd.DataFrame
 ) -> pd.DataFrame:
     """Causal frame of one coin: price features, regime, open interest change and its z-score
-    over 30 days, universe membership. Empty when the coin has no candles of ``timeframe``."""
+    over 30 days, universe membership of bars that traded. Empty when the coin has no candles of
+    ``timeframe`` (or none with a trade)."""
     k = read_store(pit, f"klines_{timeframe}", symbol, end)
     if k is None or k.empty:
         return pd.DataFrame()
@@ -111,7 +115,7 @@ def coin_frame(
         f["oi_now"] = f["oi_prev"] = np.nan
     f["oi_chg"] = np.log(f["oi_now"]) - np.log(f["oi_prev"])
     f["oi_z"] = rolling_zscore(f["oi_chg"], window)
-    f["active"] = bar_membership(members, symbol, f["time"])
+    f["active"] = bar_membership(members, symbol, f["time"]) & traded(k).to_numpy()
     f["pair"] = symbol
     return f
 

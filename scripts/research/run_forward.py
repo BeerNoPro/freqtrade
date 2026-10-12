@@ -229,6 +229,9 @@ class Runner:
             if hit.empty:
                 continue
             t = hit.iloc[0]
+            if pd.isna(t["exit_price"]):  # the coin stopped trading: no exit price, no outcome
+                logger.info("trend setup %s %s: trading ended, no outcome", s.pair, s.candle_date)
+                continue
             exit_close = pd.Timestamp(t["exit_date"]) + DAY
             paid = self.funding(s.pair, pd.Timestamp(s.decided_at), exit_close)
             o = journal.outcome(
