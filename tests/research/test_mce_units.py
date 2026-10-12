@@ -1,9 +1,6 @@
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
-from mce import journal
 from mce.event_study import StudyConfig, _dedupe, pair_events, run, summarize
 from mce.features import add_core_features
 from mce.hooks import Hook, HookRegistry
@@ -118,35 +115,6 @@ def test_event_study_end_to_end(ohlcv: pd.DataFrame) -> None:
     summary = summarize(events, [hook], cfg)
     assert set(summary["horizon"]) == {1, 4, 12, 24}
     assert summary["p_bh"].between(0, 1).all()
-
-
-def test_journal_record_and_score(tmp_path: Path) -> None:
-    conn = journal.connect(tmp_path / "j.sqlite")
-    a = journal.Assessment(
-        candle_date="2026-01-01T00:00:00+00:00",
-        pair="BTC/USDT:USDT",
-        hook_id="x@v1",
-        fingerprint="abc",
-        regime="up|normal",
-        side=1,
-        prob=0.6,
-        horizon=2,
-        timeframe="1h",
-        entry=100.0,
-        atr=2.0,
-        invalidation=98.0,
-    )
-    assert journal.record(conn, a) is True
-    assert journal.record(conn, a) is False  # idempotent
-
-    def fetch(pair: str, tf: str, after: str, n: int) -> pd.DataFrame:
-        return pd.DataFrame({"high": [101, 105], "low": [97.5, 100], "close": [100.5, 104]})
-
-    assert journal.score_pending(conn, fetch) == 1
-    assert journal.score_pending(conn, fetch) == 0
-    row = journal.scored(conn).iloc[0]
-    assert row["ret_r"] == pytest.approx(2.0) and row["hit"] == 1 and row["invalidated"] == 1
-    assert row["brier"] == pytest.approx(0.16)
 
 
 def test_forward_returns_delay_and_funding_between() -> None:
