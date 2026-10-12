@@ -43,3 +43,19 @@ services:
       - "./user_data:/freqtrade/user_data"
     working_dir: /freqtrade/scripts/research
     entrypoint: ["python", "record_market.py"]
+
+  # Forward-test runner: writes setups to user_data/research/forward/journal.sqlite before their
+  # outcome is known and scores them - see scripts/research/run_forward.py. Needs the private
+  # rules in user_data/research (forward_v1.py) and the point-in-time store user_data/research/pit.
+  #   docker compose up -d --build forward
+  forward:
+    image: futures-signal-bot:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    container_name: forward-runner
+    volumes:
+      - "./user_data:/freqtrade/user_data"
+    working_dir: /freqtrade/scripts/research
+    entrypoint: ["python", "run_forward.py"]

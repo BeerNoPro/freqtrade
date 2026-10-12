@@ -5,15 +5,20 @@ time. Public Binance endpoints only; ``exchange`` is a ccxt ``binanceusdm`` (tes
 Same sources as the research store: closed klines from ``/fapi/v1/klines``
 (``mce.archive.sync_klines``) and open interest from ``/futures/data/openInterestHist``
 (period 5m). That endpoint holds exactly the values of the archive's daily ``metrics`` files but
-stamps each one 5 minutes earlier (BTCUSDT 2026-10-10: equal after the shift, up to 0.56% apart
-without it), so rows are re-stamped like the archive before use. It keeps about 30 days and only
-answers ``startTime`` together with ``endTime``; ``metrics_api`` only bridges the days the
-archive has not published yet (``mce.pit.open_interest`` prefers the archive).
+stamps each one 5 minutes later: the archive's 15:50 snapshot is the API's 15:55 row (20 coins
+x 25 days, 2026-10-12: all equal after the shift, up to 3% apart without it). Rows are
+re-stamped like the archive before use; the 15:55 row is published by about 15:58, before the
+16:00 decision that uses it. The API keeps about 30 days and only answers ``startTime``
+together with ``endTime``; ``metrics_api`` only bridges the days the archive has not published
+yet (``mce.pit.open_interest`` prefers the archive).
 """
 
 import logging
+import time
+from collections.abc import Callable
 from pathlib import Path
 
+import ccxt
 import numpy as np
 import pandas as pd
 
@@ -23,7 +28,7 @@ from mce.pit import open_interest
 
 logger = logging.getLogger(__name__)
 
-API_TO_ARCHIVE = pd.Timedelta(minutes=5)
+API_TO_ARCHIVE = pd.Timedelta(minutes=-5)  # archive date = API timestamp + this
 SNAPSHOT_MINUTE = 50  # the hourly snapshot kept by mce.archive.parse_metrics_csv
 OI_STEP = pd.Timedelta(minutes=5)
 OI_PAGE = 500
@@ -35,6 +40,20 @@ DEPTH_LEVELS = 100
 
 def _ms(t: pd.Timestamp) -> int:
     return int(t.timestamp() * 1000)
+
+
+def with_retry(fn: Callable, *args, tries: int = 3, pause: float = 2.0):
+    """``fn(*args)``, retried after a network error or timeout, the pause doubling each time.
+    Exchange-side rejections (bad symbol...) are not retried."""
+    for attempt in range(tries):
+        try:
+            return fn(*args)
+        except ccxt.NetworkError as e:  # includes RequestTimeout
+            if attempt == tries - 1:
+                raise
+            logger.warning("retrying %s after %r", getattr(fn, "__name__", fn), e)
+            time.sleep(pause * 2**attempt)
+    raise AssertionError("unreachable")
 
 
 def oi_api_to_snapshots(rows: list[dict]) -> pd.DataFrame:
@@ -62,7 +81,7 @@ def sync_open_interest(exchange, symbol: str, pit: Path, now: pd.Timestamp) -> i
         until = min(since + OI_WINDOW, now)
         params = {"symbol": symbol, "period": "5m", "limit": OI_PAGE}
         params |= {"startTime": _ms(since), "endTime": _ms(until)}
-        rows += exchange.fapiDataGetOpenInterestHist(params)
+        rows += with_retry(exchange.fapiDataGetOpenInterestHist, params)
         since = until + pd.Timedelta(milliseconds=1)
     new = oi_api_to_snapshots(rows)
     if len(old):
@@ -88,8 +107,8 @@ def impact_bps(levels: list, notional: float, mid: float, side: int) -> float:
 
 def quote(exchange, symbol: str, side: int, notional: float) -> dict[str, float]:
     """Best bid / ask and the entry impact of ``notional`` in ``side`` direction, now."""
-    book = exchange.fapiPublicGetTickerBookTicker({"symbol": symbol})
-    depth = exchange.fapiPublicGetDepth({"symbol": symbol, "limit": DEPTH_LEVELS})
+    book = with_retry(exchange.fapiPublicGetTickerBookTicker, {"symbol": symbol})
+    depth = with_retry(exchange.fapiPublicGetDepth, {"symbol": symbol, "limit": DEPTH_LEVELS})
     bid, ask = float(book["bidPrice"]), float(book["askPrice"])
     levels = depth["asks"] if side > 0 else depth["bids"]
     return {"bid": bid, "ask": ask, "slip_bps": impact_bps(levels, notional, (bid + ask) / 2, side)}

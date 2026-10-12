@@ -40,10 +40,12 @@ Code nằm ở `scripts/research/mce/` (package `mce`):
 | `labels.py` | **Module duy nhất được nhìn tương lai**: lợi suất tương lai theo R, triple-barrier, MFE/MAE, lợi suất mua-giữ N ngày (coin delist thoát ở close cuối), tổng funding trong cửa sổ giữ, lợi suất vào trễ, funding giữa hai thời điểm |
 | `stats.py` | Block bootstrap, Benjamini–Hochberg, Brier, log loss, reliability, Brier skill score, hiệu hai trung bình (bootstrap tuần chung) |
 | `event_study.py` | Chạy hook × cặp × horizon, so baseline cùng regime, áp go/no-go; bỏ dòng ngoài danh mục (cột `active`); báo kết quả vào trễ 1 nến |
-| `pit.py` | Khung point-in-time từ kho `pit/`: nến, regime, OI chụp **trước** thời điểm quyết định, cờ thuộc top-N; kho giả để chạy thử |
+| `pit.py` | Khung point-in-time từ kho `pit/`: nến, regime, OI chụp **trước** thời điểm quyết định (kho lưu trữ, bổ sung bằng OI từ API cho những ngày kho chưa công bố), cờ thuộc top-N; kho giả để chạy thử |
 | `walkforward.py` | Chia walk-forward cuốn chiếu có purge + embargo |
-| `journal.py` | Forward journal sqlite: ghi nhận định, chấm điểm khi horizon đóng |
-| `recorder.py` | Ghi dữ liệu sàn không lưu lịch sử (mục 9): ghi nối thêm JSONL theo giờ, gộp parquet theo ngày, log khoảng trống |
+| `journal.py` | Nhật ký setup sqlite chỉ ghi thêm (trigger chặn sửa/xóa): ghi setup trước khi biết kết quả, chấm một lần (SL/TP/thời gian hoặc thoát theo luật), đối chiếu với bản chạy lại (mục 7) |
+| `live.py` | Cập nhật kho cho kiểm định tiến: OI từ API `openInterestHist` (đổi nhãn +5 phút cho khớp kho), giá mua/bán và trượt giá theo sổ lệnh lúc quyết định |
+| `forward.py` | Luật kiểm định tiến: setup đầy đủ (rủi ro 1%, trần đòn bẩy, chi phí theo R, luật bỏ setup), sự kiện hook trên khung point-in-time, ensemble Donchian hai chiều, kiểm xu hướng liều–đáp ứng |
+| `recorder.py` | Ghi dữ liệu sàn không lưu lịch sử (mục 9): ghi nối thêm JSONL theo giờ, gộp parquet theo ngày, log khoảng trống, báo cáo độ phủ |
 | `archive.py` | Tải nến (1d, 4h) + funding cho **mọi** perp USDT-M từng niêm yết, kể cả đã delist (liệt kê từ kho data.binance.vision), và lịch sử OI / tỷ lệ long-short từ file `metrics` theo ngày của kho (API chỉ giữ 30 ngày) |
 | `model.py` | Logistic regression L2 (numpy/scipy), walk-forward trên panel nhiều coin (purge + embargo theo mốc thời gian chung) |
 | `setups.py` | Kỳ vọng R sau phí, chọn setup (1 setup mở/coin, trần số setup đồng thời), thống kê theo R |
@@ -116,10 +118,20 @@ mức vô hiệu.
 ## 7. Kiểm chứng trên dữ liệu mới
 - Walk-forward cuốn chiếu (`purged_walk_forward`): purge các mẫu train có cửa sổ nhãn chạm vào test, cộng embargo.
 - **Holdout cuối chạy đúng một lần**, sau khi ghi `HookRegistry.fingerprint()` và tham số assessment.
-- Forward journal (sqlite `user_data/research/journal.sqlite`):
-  - `assessments`: thời điểm tạo, `candle_date`, cặp, `hook_id`, fingerprint, regime, hướng, `prob`, horizon,
-    timeframe, entry, ATR, mức vô hiệu. Duy nhất theo (nến, cặp, hook) → ghi lại không trùng.
-  - `outcomes`: lợi suất R, hit, có chạm mức vô hiệu không, Brier. Chấm một lần khi horizon đã đóng.
+- **Kiểm định tiến** (luật và code chốt trước, dữ liệu mới chấm):
+  - Nguồn sự thật để chấm là **chạy lại bằng code đã đóng băng trên kho lưu trữ** (nến, funding, OI đều có lịch sử),
+    nên máy tắt/ngủ không làm mất mẫu. Luật nằm trong script riêng ở `user_data/research/`; fingerprint (luật + mọi
+    module `mce` dùng tới) ghi vào `fingerprints.jsonl` trước setup đầu tiên.
+  - Runner 24/7 `scripts/research/run_forward.py` (task Windows `schedule_forward.ps1`, service docker `forward`): mỗi
+    4h đóng nến + 90 giây cập nhật kho (nến, OI API, funding), ghi setup mới vào `user_data/research/forward/
+    journal.sqlite` **trước** khi biết kết quả, chấm setup đã đóng, đối chiếu từng setup với bản chạy lại (lệch = lỗi,
+    ghi `reconcile_issues.csv`). 00:00 UTC: setup khung ngày; 01:30 UTC: đồng bộ kho đầy đủ. Lỡ nến khi máy ngủ → ghi
+    bù, đánh dấu `live_late` (không có giá mua/bán lúc quyết định). Fingerprint khác bản đăng ký → không ghi setup.
+  - Bảng `setups`: chiến lược, fingerprint, nguồn, cặp, nến quyết định, chiều, giá vào, SL, TP, số nến tối đa, khối
+    lượng, notional, đòn bẩy tối đa, chi phí theo R, trạng thái (`setup` / `skipped_cost`), giá mua/bán và trượt giá
+    lúc ghi, lý do. Bảng `outcomes`: lý do thoát, giá thoát, R gộp, phí, funding, R ròng.
+  - Tin nhắn sản phẩm (định dạng Telegram, nhãn "THỬ NGHIỆM - chưa kiểm định") ghi ra `forward/messages.log`; chỉ gửi
+    Telegram khi người dùng duyệt.
 - Drift: hit rate và Brier skill cuốn chiếu 60 ngày theo hook. **Retire** khi skill < 0 có ý nghĩa (bootstrap).
 
 ## 8. Tích hợp Freqtrade (không sửa core)
@@ -155,6 +167,24 @@ taker mỗi 5 phút (`metrics`, từ 2020), độ dày sổ lệnh trong ±0,2/1
   `scp -r <vps>:<repo>/user_data/research/live user_data/research/` (hoặc rsync). Chỉ chạy một bộ ghi mỗi máy (khóa
   `live/.recorder.lock`).
 - Dung lượng khoảng 40 MB/ngày. Các số liệu vị thế được giả định yếu khi đứng riêng; chỉ kiểm định kết hợp với giá.
+- Lịch poll ngủ từng bước ≤ 30 giây theo đồng hồ thực: đồng hồ monotonic của Windows dừng khi máy ngủ, một lần ngủ dài
+  sẽ làm việc theo giờ (quyền chọn, dọn dẹp, gộp parquet) trễ thêm đúng thời gian máy ngủ.
+- Độ phủ: `scripts/research/recorder_coverage.py` (mỗi luồng × ngày: phần ngày đã ghi, giờ có dữ liệu, phút trống,
+  dung lượng, ngày cũ chưa gộp parquet). Luồng thanh lý là luồng sự kiện: độ phủ = 1 − phút trống / ngày (trước dòng
+  đầu tiên coi như trống).
+
+**Chạy trên VPS** (khuyến nghị cho dữ liệu liên tục; người dùng tự làm):
+1. VPS Linux có Docker; `git clone` repo, chép `user_data/research/pit/`, `forward_v1.py`, `liquidation_events_v1.py`,
+   `thresholds.json`, `fingerprints.jsonl` lên cùng chỗ (thư mục riêng, không có trong git).
+2. `docker compose up -d --build recorder forward`; xem log: `docker compose logs -f --tail 50 recorder forward`.
+3. Chỉ một bộ ghi và một runner cho mỗi thư mục dữ liệu: tắt task Windows tương ứng
+   (`schedule_recorder.ps1 -Remove`, `schedule_forward.ps1 -Remove`) khi VPS đã chạy.
+4. Chép về máy nghiên cứu: `rsync -av <vps>:<repo>/user_data/research/live/ user_data/research/live/` (và
+   `forward/`); Windows không có rsync thì `scp -r`.
+
+**Nếu vẫn chạy trên laptop**: tắt chế độ ngủ khi cắm sạc (Settings → System → Power → Sleep: Never; hoặc
+`powercfg /change standby-timeout-ac 0` và `powercfg /change hibernate-timeout-ac 0`), đặt "When I close the lid" =
+Do nothing khi cắm sạc. Máy vẫn tắt khi mất điện/cập nhật Windows → khoảng trống vẫn được ghi trong `_gaps.jsonl`.
 
 ## 10. Rủi ro thống kê → biện pháp
 | Rủi ro | Biện pháp |

@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import ccxt
+import mce.live
 import numpy as np
 import pandas as pd
 import pytest
@@ -11,6 +13,7 @@ from mce.live import (
     quote,
     round_trip_cost,
     sync_open_interest,
+    with_retry,
 )
 from mce.pit import coin_frame, daily_members, open_interest, synthetic_store
 
@@ -59,9 +62,9 @@ def test_oi_rows_are_restamped_like_the_archive() -> None:
         for i, t in enumerate(stamps)
     ]
     out = oi_api_to_snapshots(rows)
-    # API 12:45 is the archive's 12:50 snapshot; the other minutes are dropped
+    # API 12:55 is the archive's 12:50 snapshot; the other minutes are dropped
     assert out["date"].tolist() == [pd.Timestamp("2026-10-10 12:50", tz=UTC)]
-    assert out["oi_value"].tolist() == [1.0]
+    assert out["oi_value"].tolist() == [3.0]
 
 
 def test_sync_open_interest_pages_and_is_incremental(tmp_path: Path) -> None:
@@ -71,9 +74,9 @@ def test_sync_open_interest_pages_and_is_incremental(tmp_path: Path) -> None:
     stored = pd.read_parquet(tmp_path / "metrics_api" / "AUSDT.parquet")
     assert added == len(stored) > 24 * 28 and len(ex.calls) > 10  # ~29 days, several pages
     assert (stored["date"].dt.minute == 50).all() and stored["date"].is_unique
-    back = stored["date"] - pd.Timedelta(minutes=5)
-    assert np.allclose(stored["oi_value"], [_value(int(t.timestamp() * 1000)) for t in back])
-    assert stored["date"].max() == pd.Timestamp("2026-10-12 15:50", tz=UTC)
+    api_time = stored["date"] + pd.Timedelta(minutes=5)
+    assert np.allclose(stored["oi_value"], [_value(int(t.timestamp() * 1000)) for t in api_time])
+    assert stored["date"].max() == pd.Timestamp("2026-10-12 15:50", tz=UTC)  # API 15:55 row
     ex.calls.clear()
     assert sync_open_interest(ex, "AUSDT", tmp_path, now) == 0
     assert len(ex.calls) == 1  # only the last few minutes are asked again
@@ -113,6 +116,31 @@ def test_bridge_rows_give_the_same_frame_as_the_archive(tmp_path: Path) -> None:
     after = coin_frame(tmp_path, symbol, "4h", end, members)
     cols = ["oi_now", "oi_prev", "oi_z", "shock", "active"]
     pd.testing.assert_frame_equal(before[cols], after[cols])
+
+
+def test_with_retry_retries_network_errors_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mce.live.time, "sleep", lambda s: None)
+    calls = []
+
+    def flaky(x: int) -> int:
+        calls.append(x)
+        if len(calls) < 3:
+            raise ccxt.RequestTimeout("slow")
+        return x * 2
+
+    assert with_retry(flaky, 21) == 42 and len(calls) == 3
+    calls.clear()
+    with pytest.raises(ccxt.RequestTimeout):
+        with_retry(flaky, 1, tries=2)
+
+    def rejected(x: int) -> int:
+        calls.append(x)
+        raise ccxt.BadSymbol("no such symbol")
+
+    calls.clear()
+    with pytest.raises(ccxt.BadSymbol):
+        with_retry(rejected, 1)
+    assert len(calls) == 1
 
 
 def test_impact_and_quote() -> None:
