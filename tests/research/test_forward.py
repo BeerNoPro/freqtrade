@@ -83,6 +83,8 @@ def test_ensemble_weights_and_trades() -> None:
     assert a.iloc[1] == 0 and a.iloc[2] == 1.0  # only lookback 2 has history: long
     assert a.iloc[4] == 1.0 and ens.long_stop["A"].iloc[4] == pytest.approx(2.5)  # min of stops
     assert (ens.signal["B"] == 0).all()  # a flat price never breaks out
+    assert a.iloc[8] == -0.5 and ens.long_part["A"].iloc[8] == 0  # lookback 2 short, 4 flat
+    assert ens.short_part["A"].iloc[8] == 0.5 and ens.short_stop["A"].iloc[8] == 7.5
     members = pd.DataFrame(True, index=idx, columns=close.columns)
     members.iloc[:3] = False
     w = trend_weights(ens.signal, pd.DataFrame(0.5, index=idx, columns=close.columns), members, 2)

@@ -196,14 +196,22 @@ def donchian_state(close: np.ndarray, n: int) -> tuple[np.ndarray, np.ndarray]:
 
 @dataclass
 class Ensemble:
-    signal: pd.DataFrame  # mean sub-model state of the lookbacks with enough history, in [-1, 1]
+    long_part: pd.DataFrame  # share of the lookbacks with enough history that are long, [0, 1]
+    short_part: pd.DataFrame  # share that are short
     long_stop: pd.DataFrame  # lowest stop of the long sub-models: where the whole long exits
     short_stop: pd.DataFrame  # highest stop of the short sub-models
+
+    @property
+    def signal(self) -> pd.DataFrame:
+        """Mean sub-model state in [-1, 1]. A long state never depends on the short side (a
+        breakout above the channel also clears any short stop), so ``long_part`` alone is the
+        long-only ensemble."""
+        return self.long_part - self.short_part
 
 
 def donchian_ensemble(close: pd.DataFrame, lookbacks: tuple[int, ...]) -> Ensemble:
     """Ensemble of ``donchian_state`` over ``lookbacks`` for every column of daily closes."""
-    signal, long_stop, short_stop = {}, {}, {}
+    long_part, short_part, long_stop, short_stop = {}, {}, {}, {}
     for col in close.columns:
         c = close[col].to_numpy(dtype=float)
         states, stops, valid = [], [], []
@@ -214,16 +222,15 @@ def donchian_ensemble(close: pd.DataFrame, lookbacks: tuple[int, ...]) -> Ensemb
             stops.append(lv)
             valid.append(have & np.isfinite(c))
         st, lv, ok = np.array(states), np.array(stops), np.array(valid)
-        count = ok.sum(axis=0)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            signal[col] = np.where(count > 0, (st * ok).sum(axis=0) / count, 0.0)
-        long_lv = np.where(st == 1, lv, np.nan)
-        short_lv = np.where(st == -1, lv, np.nan)
-        long_stop[col] = _nan_reduce(long_lv, np.nanmin)
-        short_stop[col] = _nan_reduce(short_lv, np.nanmax)
+        count = np.maximum(ok.sum(axis=0), 1)
+        long_part[col] = ((st == 1) & ok).sum(axis=0) / count
+        short_part[col] = ((st == -1) & ok).sum(axis=0) / count
+        long_stop[col] = _nan_reduce(np.where(st == 1, lv, np.nan), np.nanmin)
+        short_stop[col] = _nan_reduce(np.where(st == -1, lv, np.nan), np.nanmax)
     idx = close.index
     return Ensemble(
-        pd.DataFrame(signal, index=idx),
+        pd.DataFrame(long_part, index=idx),
+        pd.DataFrame(short_part, index=idx),
         pd.DataFrame(long_stop, index=idx),
         pd.DataFrame(short_stop, index=idx),
     )
