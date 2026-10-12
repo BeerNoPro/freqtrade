@@ -7,10 +7,12 @@ from pathlib import Path
 import pandas as pd
 import pytest
 import websockets
+from mce import recorder
 from mce.recorder import (
     PartWriter,
     beat,
     compact_all,
+    coverage,
     depth_rows,
     force_order_row,
     next_run,
@@ -171,6 +173,50 @@ async def test_record_ws_reconnects_and_logs_the_gap(tmp_path: Path) -> None:
     assert _rows(tmp_path / "liquidations") == 4 and len(connections) == 2
     gaps = [json.loads(x) for x in (tmp_path / "_gaps.jsonl").read_text().splitlines()]
     assert [g["reason"] for g in gaps] == ["reconnected"] and gaps[0]["end"] >= gaps[0]["start"]
+
+
+async def test_sleep_until_follows_the_wall_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = {"t": 1000.0, "asleep": 1}
+    naps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        naps.append(seconds)
+        # the machine sleeps through the first nap: the wall clock jumps by an hour
+        clock["t"] += 3600.0 if clock["asleep"] else seconds
+        clock["asleep"] = 0
+
+    monkeypatch.setattr(recorder.time, "time", lambda: clock["t"])
+    monkeypatch.setattr(recorder.asyncio, "sleep", fake_sleep)
+    await recorder.sleep_until(1000.0 + 600.0)
+    assert naps == [30.0]  # one short step, then the wall clock shows the target has passed
+    naps.clear()
+    await recorder.sleep_until(clock["t"] + 45.0)
+    assert naps == [30.0, 15.0]
+
+
+def test_coverage_counts_snapshots_gaps_and_compaction(tmp_path: Path) -> None:
+    writer = PartWriter(tmp_path)
+    # yesterday (2026-10-10): book_ticker every minute from 12:00 to 17:59, compacted
+    start = DAY_MS - 12 * 3_600_000
+    for m in range(360):
+        t = start + m * 60_000
+        writer.append("book_ticker", [{"taken": t, "symbol": "BTCUSDT"}], t)
+    compact_all(tmp_path, "2026-10-11")
+    # liquidations: first row at 12:00 yesterday, a 60-minute outage logged at 15:00
+    writer.append("liquidations", [{"received": start, "symbol": "X"}], start)
+    writer.gap("all", start + 3 * 3_600_000, start + 4 * 3_600_000, "machine asleep")
+    # today: 30 snapshots in the first hour, still in part files
+    for m in range(30):
+        writer.append("book_ticker", [{"taken": DAY_MS + m * 60_000}], DAY_MS + m * 60_000)
+    cov = coverage(tmp_path, at_ms=DAY_MS + 3_600_000).set_index(["stream", "day"])
+    y = cov.loc[("book_ticker", "2026-10-10")]
+    assert y["snapshots"] == 360 and y["coverage"] == pytest.approx(0.25) and y["hours"] == 6
+    assert y["state"] == "compacted" and not y["late_compaction"] and y["gap_min"] == 60
+    t = cov.loc[("book_ticker", "2026-10-11")]
+    assert t["coverage"] == pytest.approx(0.5) and t["state"] == "open"  # 30 of 60 minutes
+    liq = cov.loc[("liquidations", "2026-10-10")]
+    # 12 hours before the first row + 1 hour outage missing out of 24
+    assert liq["coverage"] == pytest.approx(11 / 24) and liq["late_compaction"]
 
 
 def test_heartbeat_logs_a_long_silence_as_a_gap(tmp_path: Path) -> None:

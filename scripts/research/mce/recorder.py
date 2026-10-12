@@ -252,6 +252,97 @@ def compact_all(outdir: Path, before_day: str) -> dict[str, int]:
     return done
 
 
+# ---------------------------------------------------------------- coverage
+
+DAY_MS = 86_400_000
+SNAPSHOT_STREAMS = tuple(k for k in EVERY if k not in ("housekeeping", "heartbeat"))
+
+
+def _day_times(stream_dir: Path, day: str) -> tuple[pd.Series, str]:
+    """Row times (ms) of one stream day, from its parquet and/or part files, and its state:
+    ``compacted`` (parquet only), ``open`` (part files only) or ``mixed``."""
+    col = "taken" if stream_dir.name in SNAPSHOT_STREAMS else "received"
+    parts, out = [], stream_dir / f"{day}.parquet"
+    if out.exists():
+        parts.append(pd.read_parquet(out, columns=[col])[col])
+    day_dir = stream_dir / day
+    files = sorted(day_dir.glob("part-*.jsonl")) if day_dir.is_dir() else []
+    if files:
+        rows, _ = _read_parts(files)
+        parts.append(pd.Series([r.get(col) for r in rows], dtype="float64"))
+    state = "mixed" if out.exists() and files else "compacted" if out.exists() else "open"
+    times = pd.concat(parts, ignore_index=True) if parts else pd.Series(dtype="float64")
+    return times.dropna().astype("int64"), state
+
+
+def gap_minutes(outdir: Path) -> dict[tuple[str, str], float]:
+    """Minutes of logged gaps per (stream, UTC day); stream ``all`` covers every stream."""
+    path = outdir / "_gaps.jsonl"
+    out: dict[tuple[str, str], float] = {}
+    if not path.exists():
+        return out
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        g = json.loads(line)
+        start, end = int(g["start"]), int(g["end"])
+        while start < end:
+            day_end = (start // DAY_MS + 1) * DAY_MS
+            stop = min(end, day_end)
+            day = pd.Timestamp(start, unit="ms", tz="UTC").strftime("%Y-%m-%d")
+            out[(g["stream"], day)] = out.get((g["stream"], day), 0.0) + (stop - start) / 60_000
+            start = stop
+    return out
+
+
+def coverage(outdir: Path, at_ms: int | None = None) -> pd.DataFrame:
+    """One row per stream and UTC day: rows, distinct snapshots against the clock grid
+    (``EVERY``), hours with data, logged gap minutes, size and compaction state. ``coverage`` is
+    the share of the day (up to ``at_ms`` today) that was recorded: snapshots / expected for
+    snapshot streams, 1 - logged gap minutes / day for liquidations (an event stream)."""
+    at_ms = at_ms if at_ms is not None else now_ms()
+    today = pd.Timestamp(at_ms, unit="ms", tz="UTC").strftime("%Y-%m-%d")
+    gaps = gap_minutes(outdir)
+    rows = []
+    streams = sorted(p for p in outdir.iterdir() if p.is_dir() and p.name != "meta")
+    for stream_dir in streams:
+        days = {p.stem if p.suffix == ".parquet" else p.name for p in stream_dir.iterdir()}
+        for i, day in enumerate(sorted(d for d in days if len(d) == 10)):
+            times, state = _day_times(stream_dir, day)
+            start = int(pd.Timestamp(day, tz="UTC").timestamp() * 1000)
+            span = min(at_ms, start + DAY_MS) - start  # today: the part of the day elapsed
+            gap = gaps.get(("all", day), 0.0) + gaps.get((stream_dir.name, day), 0.0)
+            if stream_dir.name in SNAPSHOT_STREAMS:
+                every = EVERY[stream_dir.name] * 1000
+                snaps = float(times.nunique())
+                cov = snaps / max(1, span // every)
+            else:
+                snaps = float("nan")
+                # before the first row ever recorded the recorder was not running (no gap logged)
+                before = (times.min() - start) / 60_000 if i == 0 and len(times) else 0.0
+                cov = max(0.0, 1 - (gap + before) / (span / 60_000))
+            size = sum(
+                f.stat().st_size
+                for f in [stream_dir / f"{day}.parquet", *(stream_dir / day).glob("*")]
+                if f.is_file()
+            )
+            rows.append(
+                {
+                    "stream": stream_dir.name,
+                    "day": day,
+                    "rows": len(times),
+                    "snapshots": snaps,
+                    "coverage": min(1.0, cov),
+                    "hours": int(((times - start) // 3_600_000).nunique()),
+                    "gap_min": round(gap, 1),
+                    "size_mb": round(size / 1e6, 2),
+                    "state": state,
+                    "late_compaction": day < today and state != "compacted",
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 # ---------------------------------------------------------------- recorder
 
 
@@ -294,6 +385,14 @@ async def record_ws(
         delay = min(delay * 2, backoff[1])
 
 
+async def sleep_until(t: float, step: float = 30.0) -> None:
+    """Sleep until wall-clock time ``t`` in steps of at most ``step`` seconds. asyncio timers
+    follow a monotonic clock that stops while Windows sleeps, so one long sleep would end as
+    late as the machine slept; short steps notice the wake-up within ``step``."""
+    while (left := t - time.time()) > 0:  # noqa: ASYNC110 - polling the wall clock is the point
+        await asyncio.sleep(min(left, step))
+
+
 async def poll(
     name: str, job: Callable[[int], Awaitable[int]], writer: PartWriter, run_now: bool = True
 ) -> None:
@@ -302,7 +401,7 @@ async def poll(
     every = EVERY[name]
     while True:
         if not run_now:
-            await asyncio.sleep(max(0.0, next_run(time.time(), every) - time.time()))
+            await sleep_until(next_run(time.time(), every))
         run_now = False
         taken = now_ms()
         try:
