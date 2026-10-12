@@ -2,15 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 from mce.portfolio import (
+    beta_attribution,
     block_bootstrap_sharpe,
     daily_funding,
     deflated_sharpe,
-    funding_known_at_close,
     metrics,
-    quantile_long_short,
     simulate,
     vol_target_scalar,
-    yearly_returns,
 )
 
 
@@ -65,39 +63,6 @@ def test_daily_funding_alignment_and_cost() -> None:
     assert short.daily["net"].iloc[0] == pytest.approx(0.003)
 
 
-def test_funding_known_at_close_is_one_day_before_paid() -> None:
-    prints = pd.date_range("2024-01-01 08:00", "2024-01-05 00:00", freq="8h", tz="UTC")
-    funding = pd.DataFrame({"A": np.arange(len(prints), dtype=float)}, index=prints)
-    known = funding_known_at_close(funding, IDX)
-    # row 2024-01-01 sees the prints of 01-01 08:00, 16:00 and 01-02 00:00 (values 0, 1, 2)
-    assert known["A"].iloc[0] == pytest.approx(3.0)
-    # what is known at the close of row D+1 is what a holder of row D paid
-    paid = daily_funding(funding, IDX)
-    assert known["A"].iloc[1:].tolist() == pytest.approx(paid["A"].iloc[:-1].tolist())
-    empty = funding_known_at_close(funding.iloc[:0], IDX)
-    assert empty.isna().all().all()
-
-
-def test_quantile_long_short_construction() -> None:
-    idx = pd.date_range("2024-01-01", periods=5, freq="D", tz="UTC")
-    cols = list("ABCDEF")
-    signal = pd.DataFrame([[6.0, 5, 4, 3, 2, 1]] * 5, index=idx, columns=cols)
-    signal.iloc[2] = [1.0, 2, 3, 4, 5, 6]  # flips between rebalances: must not trade
-    members = pd.DataFrame(True, index=idx, columns=cols)
-    members.loc[idx[3] :, "B"] = False  # B leaves the universe on day 3
-    rebalance = np.array([True, False, False, False, True])
-    w = quantile_long_short(signal, members, rebalance)
-    assert w.iloc[0].tolist() == pytest.approx([-0.25, -0.25, 0, 0, 0.25, 0.25])
-    assert w.iloc[2].tolist() == w.iloc[0].tolist()  # held through the signal flip
-    assert w.iloc[3]["B"] == 0 and w.iloc[3]["A"] == pytest.approx(-0.25)
-    # day 4: 5 members -> k = 1: short A (highest), long F (lowest)
-    assert w.iloc[4].tolist() == pytest.approx([-0.5, 0, 0, 0, 0, 0.5])
-    assert w.sum(axis=1).iloc[[0, 4]].abs().max() < 1e-12
-    # causal: truncating the future does not change past weights
-    part = quantile_long_short(signal.iloc[:3], members.iloc[:3], rebalance[:3])
-    pd.testing.assert_frame_equal(part, w.iloc[:3])
-
-
 def test_vol_target_scalar_causal_and_capped() -> None:
     rng = np.random.default_rng(0)
     idx = pd.date_range("2022-01-01", periods=400, freq="D", tz="UTC")
@@ -116,7 +81,6 @@ def test_metrics_and_deflated_sharpe() -> None:
     good = pd.Series(rng.normal(0.002, 0.02, 1460), index=idx)
     m = metrics(good)
     assert m["sharpe"] > 1.0 and m["max_dd"] < 0
-    assert len(yearly_returns(good)) == 4
     one = deflated_sharpe(good, n_trials=1, sr_std_trials=0.0)
     many = deflated_sharpe(good, n_trials=100, sr_std_trials=0.05)
     assert one["dsr"] > 0.95
@@ -135,3 +99,13 @@ def test_block_bootstrap_sharpe() -> None:
     assert a["lo"] < a["sharpe"] < a["hi"]
     # iid returns: annual Sharpe s.e. ~ sqrt(365 / 1460) = 0.5, so the 5-95% band is ~1.65 wide
     assert 1.2 < a["hi"] - a["lo"] < 2.2
+
+
+def test_beta_attribution_separates_beta_from_alpha() -> None:
+    rng = np.random.default_rng(6)
+    idx = pd.date_range("2024-01-01", periods=2000, freq="D", tz="UTC")
+    market = pd.Series(rng.normal(-0.004, 0.03, 2000), index=idx)
+    net = -0.8 * market + rng.normal(0, 0.005, 2000)  # pure short beta, no alpha
+    att = beta_attribution(net, market)
+    assert att["beta"] == pytest.approx(-0.8, abs=0.02)
+    assert abs(att["resid_sharpe"]) < 1.2 and metrics(net)["sharpe"] > 1.5

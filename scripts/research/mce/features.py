@@ -33,20 +33,6 @@ def rolling_zscore(series: pd.Series, window: int) -> pd.Series:
     return (series - mean) / std.replace(0, np.nan)
 
 
-def xs_rank_mean(signals: list[pd.DataFrame], members: pd.DataFrame) -> pd.DataFrame:
-    """
-    Mean cross-sectional percentile rank (0..1] of several signals (rows = days, columns = coins).
-    Each row ranks only the members with every signal finite; other cells are NaN. Row t uses
-    row t of the inputs only, so the score is causal when the signals are.
-    """
-    aligned = [s.reindex_like(members) for s in signals]
-    valid = members.astype(bool)
-    for s in aligned:
-        valid &= np.isfinite(s)
-    ranks = [s.where(valid).rank(axis=1, pct=True) for s in aligned]
-    return sum(ranks[1:], ranks[0]) / len(ranks)
-
-
 def candle_structure(df: pd.DataFrame, atr_series: pd.Series) -> pd.DataFrame:
     """Body/wick shares of the range, range in ATR, and open gap vs previous close in ATR."""
     rng = (df["high"] - df["low"]).replace(0, np.nan)
@@ -62,15 +48,6 @@ def candle_structure(df: pd.DataFrame, atr_series: pd.Series) -> pd.DataFrame:
         },
         index=df.index,
     )
-
-
-def breakout(df: pd.DataFrame, lookback: int) -> pd.Series:
-    """+1 when close breaks above the prior ``lookback`` high, -1 below the prior low, else 0."""
-    prior_high = df["high"].rolling(lookback, min_periods=lookback).max().shift(1)
-    prior_low = df["low"].rolling(lookback, min_periods=lookback).min().shift(1)
-    up = (df["close"] > prior_high).astype(int)
-    down = (df["close"] < prior_low).astype(int)
-    return up - down
 
 
 def log_return(close: pd.Series, lag: int = 1) -> pd.Series:

@@ -6,15 +6,7 @@ from mce.features import add_core_features
 from mce.hooks import Hook, HookRegistry
 from mce.labels import forward_returns_r, funding_between, triple_barrier
 from mce.regime import RegimeRules, add_regime
-from mce.stats import (
-    benjamini_hochberg,
-    brier_skill,
-    cluster_bootstrap_diff,
-    cluster_bootstrap_mean,
-    max_reliability_gap,
-    reliability,
-)
-from mce.walkforward import purged_walk_forward
+from mce.stats import benjamini_hochberg, cluster_bootstrap_diff, cluster_bootstrap_mean
 
 
 def _path(closes: list[float], highs: list[float], lows: list[float]) -> pd.DataFrame:
@@ -64,22 +56,6 @@ def test_cluster_bootstrap_detects_effect_and_null() -> None:
     assert null["lo"] < 0 < null["hi"] and null["p"] > 0.01
     effect = cluster_bootstrap_mean(rng.normal(0.3, 1, 1000), clusters, 1000)
     assert effect["lo"] > 0 and effect["p"] < 0.01
-
-
-def test_calibration_metrics() -> None:
-    rng = np.random.default_rng(4)
-    prob = rng.uniform(0, 1, 5000)
-    y = (rng.uniform(0, 1, 5000) < prob).astype(int)
-    assert brier_skill(prob, y) > 0.2
-    assert max_reliability_gap(reliability(prob, y)) < 0.06
-    assert brier_skill(np.full(5000, y.mean()), y) == pytest.approx(0, abs=1e-12)
-
-
-def test_purged_walk_forward_no_overlap() -> None:
-    splits = list(purged_walk_forward(1000, 300, 100, label_horizon=24, embargo=5))
-    assert len(splits) == 7
-    for train, test in splits:
-        assert train.max() + 24 + 5 < test.min()
 
 
 def test_hook_rules_and_fingerprint() -> None:

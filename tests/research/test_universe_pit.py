@@ -8,7 +8,7 @@ from mce.archive import (
     parse_archive_klines,
     parse_s3_prefixes,
 )
-from mce.universe import is_candidate, pair_to_symbol, point_in_time_members
+from mce.universe import is_candidate, point_in_time_members
 
 
 def _panel(n_days: int, start: str = "2021-01-01") -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -75,9 +75,7 @@ def test_monthly_holds_and_drops_delisted() -> None:
     assert m.loc["2021-02-28":, ["BUSDT", "CUSDT"]].all().all()  # February ranking from Feb 28
 
 
-def test_symbol_helpers() -> None:
-    assert pair_to_symbol("BTC/USDT:USDT") == "BTCUSDT"
-    assert pair_to_symbol("1000PEPE/USDT:USDT") == "1000PEPEUSDT"
+def test_candidate_filter() -> None:
     assert is_candidate("LUNAUSDT") and is_candidate("1000SHIBUSDT", "COIN", ["Meme", "Crypto"])
     assert not is_candidate("USDCUSDT", "COIN", ["Crypto"])  # stablecoin tagged COIN
     assert not is_candidate("BTCDOMUSDT", "INDEX", ["Index", "Crypto"])

@@ -10,7 +10,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from mce.features import rolling_pct_rank
 
@@ -53,18 +52,3 @@ def add_regime(
     out[f"{prefix}is_shock"] = out["shock"].abs() >= rules.shock_atr
     out[f"{prefix}regime"] = out[f"{prefix}trend"] + "|" + out[f"{prefix}vol"]
     return out
-
-
-def regime_separation(labels: pd.Series, outcome: pd.Series) -> dict[str, float]:
-    """
-    Do regimes differ in a future outcome (e.g. |fwd return| or fwd return)?
-    Kruskal-Wallis across groups; returns statistic, p-value and epsilon-squared effect size.
-    Note: p-values are optimistic with overlapping outcomes; read the effect size first.
-    """
-    data = pd.DataFrame({"label": labels, "y": outcome}).dropna()
-    groups = [g["y"].to_numpy() for _, g in data.groupby("label") if len(g) >= 30]
-    if len(groups) < 2:
-        return {"h": np.nan, "p": np.nan, "eps2": np.nan}
-    h, p = stats.kruskal(*groups)
-    n = sum(len(g) for g in groups)
-    return {"h": float(h), "p": float(p), "eps2": float(h / (n - 1))}

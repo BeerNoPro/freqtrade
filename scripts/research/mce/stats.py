@@ -1,4 +1,4 @@
-"""Inference and calibration helpers (numpy/scipy only)."""
+"""Inference helpers: cluster bootstrap, Benjamini-Hochberg, fees in R."""
 
 import numpy as np
 import pandas as pd
@@ -88,40 +88,6 @@ def benjamini_hochberg(pvalues: np.ndarray, q: float = 0.05) -> tuple[np.ndarray
     out[order] = np.minimum(ranked, 1.0)
     adj[ok] = out
     return np.where(ok, adj <= q, False), adj
-
-
-def brier(prob: np.ndarray, outcome: np.ndarray) -> float:
-    return float(np.mean((np.asarray(prob, float) - np.asarray(outcome, float)) ** 2))
-
-
-def log_loss(prob: np.ndarray, outcome: np.ndarray, eps: float = 1e-6) -> float:
-    p = np.clip(np.asarray(prob, float), eps, 1 - eps)
-    y = np.asarray(outcome, float)
-    return float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p)))
-
-
-def brier_skill(prob: np.ndarray, outcome: np.ndarray, base_rate: float | None = None) -> float:
-    """1 - Brier / Brier(climatology). base_rate should come from data before the forecasts."""
-    y = np.asarray(outcome, float)
-    base = y.mean() if base_rate is None else base_rate
-    ref = brier(np.full_like(y, base), y)
-    return float(1 - brier(prob, y) / ref) if ref > 0 else np.nan
-
-
-def reliability(prob: np.ndarray, outcome: np.ndarray, bins: int = 10) -> pd.DataFrame:
-    """Reliability table: mean forecast vs observed frequency per probability bin."""
-    data = pd.DataFrame({"p": prob, "y": outcome}).dropna()
-    data["bin"] = pd.cut(data["p"], np.linspace(0, 1, bins + 1), include_lowest=True)
-    table = data.groupby("bin", observed=True).agg(
-        n=("y", "size"), p_mean=("p", "mean"), y_rate=("y", "mean")
-    )
-    table["gap"] = table["y_rate"] - table["p_mean"]
-    return table.reset_index()
-
-
-def max_reliability_gap(table: pd.DataFrame, min_n: int = 30) -> float:
-    big = table[table["n"] >= min_n]
-    return float(big["gap"].abs().max()) if len(big) else np.nan
 
 
 def fee_in_r(entry_price: np.ndarray, atr: np.ndarray, round_trip_fee: float) -> np.ndarray:

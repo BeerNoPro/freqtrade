@@ -11,14 +11,11 @@ import inspect
 import json
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from typing import Literal
 
 import pandas as pd
 
 
-Status = Literal["candidate", "active", "retired"]
 Condition = Callable[[pd.DataFrame, dict], pd.Series]
-Invalidation = Callable[[pd.DataFrame, dict], pd.Series]
 
 MAX_PARAMS = 3
 
@@ -32,9 +29,6 @@ class Hook:
     params: dict = field(default_factory=dict)
     horizon: int = 12  # primary horizon in candles, used for gates and cooldown
     timeframes: tuple[str, ...] = ("1h",)
-    features: tuple[str, ...] = ()
-    invalidation: Invalidation | None = None  # price distance from entry that voids the view
-    status: Status = "candidate"
     cooldown: int | None = None  # candles to skip after a firing; defaults to horizon
 
     def __post_init__(self) -> None:
@@ -53,9 +47,7 @@ class Hook:
 
     def fingerprint(self) -> str:
         parts = [self.id, json.dumps(self.params, sort_keys=True), str(self.horizon)]
-        for fn in (self.condition, self.invalidation):
-            if fn is not None:
-                parts.append(inspect.getsource(fn))
+        parts.append(inspect.getsource(self.condition))
         return hashlib.sha256("\n".join(parts).encode()).hexdigest()[:16]
 
 
@@ -77,9 +69,6 @@ class HookRegistry:
 
     def get(self, hook_id: str) -> Hook:
         return self._hooks[hook_id]
-
-    def with_status(self, *status: Status) -> list[Hook]:
-        return [h for h in self if h.status in status]
 
     def fingerprint(self) -> str:
         """Hash of every hook's logic and params; record it before any holdout run."""

@@ -1,12 +1,7 @@
 """
-Research universes.
-
-``DEFAULT_PAIRS``: fixed list of large USDT-M perps for collectors and quick single-pair studies.
-It was chosen today, so it carries survivorship bias: never use it for portfolio tests.
-
-``point_in_time_members``: top-n by liquidity using only data available at each date, over a
-candidate list that includes delisted contracts (see ``mce.archive``). Use it for every
-portfolio or cross-sectional test.
+Research universe: ``point_in_time_members`` ranks coins by liquidity using only data available
+at each date, over a candidate list that includes delisted contracts (see ``mce.archive``).
+Never test on a list of coins chosen today (survivorship bias).
 """
 
 from collections.abc import Iterable
@@ -14,24 +9,6 @@ from collections.abc import Iterable
 import numpy as np
 import pandas as pd
 
-
-DEFAULT_PAIRS = [
-    "BTC/USDT:USDT",
-    "ETH/USDT:USDT",
-    "SOL/USDT:USDT",
-    "XRP/USDT:USDT",
-    "DOGE/USDT:USDT",
-    "ADA/USDT:USDT",
-    "LINK/USDT:USDT",
-    "AVAX/USDT:USDT",
-    "BNB/USDT:USDT",
-    "LTC/USDT:USDT",
-    "DOT/USDT:USDT",
-    "TRX/USDT:USDT",
-    "BCH/USDT:USDT",
-    "ATOM/USDT:USDT",
-    "NEAR/USDT:USDT",
-]
 
 # Binance tags every perp with an underlying type (COIN, EQUITY, COMMODITY, INDEX, FX, PREMARKET)
 # and TradFi contracts also carry a "TradFi" subtype. These bases are not crypto exposure but are
@@ -56,11 +33,6 @@ EXCLUDED_BASES = frozenset(
         "BLUEBIRD",
     }
 )
-
-
-def pair_to_symbol(pair: str) -> str:
-    """ccxt pair to raw Binance symbol: ``BTC/USDT:USDT`` -> ``BTCUSDT``."""
-    return pair.split(":")[0].replace("/", "")
 
 
 def is_candidate(

@@ -30,21 +30,6 @@ def funding_between(prints: pd.Series, start: pd.Series, end: pd.Series) -> np.n
     return cum[e] - cum[s]
 
 
-def forward_hold_return(close: pd.DataFrame, hold: int) -> pd.DataFrame:
-    """
-    Buy-and-hold return from close[t] to close[t + hold] per column (rows = consecutive days).
-    A coin that stops trading inside the window exits at its last close (delisted contracts
-    settle at their last price). NaN when close[t] is missing or the window passes the frame end.
-    """
-    return close.ffill().shift(-hold) / close - 1
-
-
-def forward_sum(frame: pd.DataFrame, hold: int) -> pd.DataFrame:
-    """Sum of rows t .. t + hold - 1, e.g. funding paid by a position opened at close t and held
-    ``hold`` days when ``frame`` is aligned to holding days. NaN when the window passes the end."""
-    return frame.rolling(hold, min_periods=hold).sum().shift(-(hold - 1))
-
-
 def triple_barrier(
     df: pd.DataFrame,
     rows: np.ndarray,
