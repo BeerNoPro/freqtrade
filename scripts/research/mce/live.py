@@ -57,13 +57,15 @@ def with_retry(fn: Callable, *args, tries: int = 3, pause: float = 2.0):
 
 
 def oi_api_to_snapshots(rows: list[dict]) -> pd.DataFrame:
-    """openInterestHist rows -> hourly snapshots stamped like the archive (date, oi_value)."""
+    """openInterestHist rows -> hourly snapshots stamped like the archive (date, oi_value). The
+    API rounds ``startTime`` down to the 5-minute grid, so consecutive pages can repeat a row:
+    duplicates are dropped."""
     if not rows:
         return pd.DataFrame(columns=["date", "oi_value"])
     raw = pd.DataFrame(rows)
     date = pd.to_datetime(raw["timestamp"].astype("int64"), unit="ms", utc=True) + API_TO_ARCHIVE
     value = pd.to_numeric(raw["sumOpenInterestValue"], errors="coerce")
-    out = pd.DataFrame({"date": date, "oi_value": value})
+    out = pd.DataFrame({"date": date, "oi_value": value}).drop_duplicates("date", keep="last")
     return out[out["date"].dt.minute == SNAPSHOT_MINUTE].reset_index(drop=True)
 
 

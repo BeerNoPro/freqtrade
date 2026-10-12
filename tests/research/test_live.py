@@ -65,6 +65,8 @@ def test_oi_rows_are_restamped_like_the_archive() -> None:
     # API 12:55 is the archive's 12:50 snapshot; the other minutes are dropped
     assert out["date"].tolist() == [pd.Timestamp("2026-10-10 12:50", tz=UTC)]
     assert out["oi_value"].tolist() == [3.0]
+    # a row repeated by two consecutive pages is kept once
+    assert len(oi_api_to_snapshots(rows + rows[-1:])) == 1
 
 
 def test_sync_open_interest_pages_and_is_incremental(tmp_path: Path) -> None:
