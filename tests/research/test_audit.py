@@ -1,12 +1,17 @@
 """Data-store audit: every check finds a planted defect and stays silent on clean data (no
 network: the verification sources are fakes)."""
 
+from dataclasses import replace
 from pathlib import Path
 
+import ccxt
 import numpy as np
 import pandas as pd
+import pytest
+from audit_store import binance_sources
 from audit_store import main as audit_main
 from mce.audit import (
+    SourceError,
     Sources,
     apply_known,
     compare_frames,
@@ -337,6 +342,51 @@ def test_verify_reports_exactly_the_altered_value(tmp_path: Path) -> None:
     again, _ = verify_sample(tmp_path, _fake_sources(tmp_path, [None]), 4, 0, now=now)
     picked = ["kind", "symbol", "period"]
     pd.testing.assert_frame_equal(samples[picked], again[picked])  # same seed, same sample
+
+
+def test_verify_survives_unavailable_and_failing_sources(tmp_path: Path) -> None:
+    """A source without the symbol counts as unavailable; a source that fails after its retries
+    is reported for that unit only and the run goes on."""
+    synthetic_store(tmp_path, n_coins=3, start="2024-01-01", end="2024-04-01")
+    now = pd.Timestamp("2024-04-15", tz="UTC")
+    base = _fake_sources(tmp_path, [None])
+    calls = []
+
+    def failing_once(symbol: str, lo: pd.Timestamp, hi: pd.Timestamp) -> pd.DataFrame:
+        calls.append(symbol)
+        if len(calls) == 1:
+            raise SourceError("timeout after 3 tries")
+        return base.api_funding(symbol, lo, hi)
+
+    sources = replace(base, api_klines=lambda *a: None, api_funding=failing_once)
+    kinds = ("klines_1d", "funding")
+    samples, issues = verify_sample(tmp_path, sources, 3, 0, kinds, now=now)
+    assert len(samples) == 6 and len(calls) == 3  # every sampled unit was still checked
+    assert samples.loc[samples["kind"] == "klines_1d", "api_diff"].isna().all()
+    assert issues["check"].tolist() == ["source_error"]
+    assert issues["severity"].iloc[0] == "warning" and "timeout" in issues["detail"].iloc[0]
+
+
+class _Exchange:
+    """ccxt-like exchange whose klines endpoint rejects the symbol or fails."""
+
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    def milliseconds(self) -> int:
+        return 0
+
+    def fapiPublicGetKlines(self, params: dict) -> list:
+        raise self.error
+
+
+def test_binance_sources_map_exchange_errors() -> None:
+    lo, hi = pd.Timestamp("2024-01-01", tz="UTC"), pd.Timestamp("2024-02-01", tz="UTC")
+    rejected = binance_sources(_Exchange(ccxt.BadSymbol("Invalid symbol.")))
+    assert rejected.api_klines("SXPUSDT", "1d", lo, hi) is None
+    failing = binance_sources(_Exchange(ccxt.ExchangeError("server error")))
+    with pytest.raises(SourceError):
+        failing.api_klines("BTCUSDT", "1d", lo, hi)
 
 
 # ------------------------------------------------------------------ 10 command line, end to end

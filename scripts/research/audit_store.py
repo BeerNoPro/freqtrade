@@ -43,6 +43,7 @@ from mce.archive import (
 from mce.audit import (
     ISSUE_COLS,
     VERIFY_KINDS,
+    SourceError,
     Sources,
     apply_known,
     cross_check_daily,
@@ -124,7 +125,7 @@ def _ms(t: pd.Timestamp) -> int:
 
 def _archive(key: str, parse: Callable[[str], pd.DataFrame], tries: int = 3) -> pd.DataFrame | None:
     """One archive file parsed, None when it does not exist (HTTP 404). Other network errors are
-    retried, the pause doubling each time."""
+    retried, the pause doubling each time, then raised as ``SourceError``."""
     for attempt in range(tries):
         try:
             return parse(_zip_text(key))
@@ -132,12 +133,24 @@ def _archive(key: str, parse: Callable[[str], pd.DataFrame], tries: int = 3) -> 
             if e.response is not None and e.response.status_code == 404:
                 return None
             if attempt == tries - 1:
-                raise
-        except requests.RequestException:
+                raise SourceError(f"archive {key}: {e}") from e
+        except requests.RequestException as e:
             if attempt == tries - 1:
-                raise
+                raise SourceError(f"archive {key}: {e}") from e
         time.sleep(2**attempt)
     return None
+
+
+def _api(call: Callable, params: dict):
+    """A fapi call (network errors retried): None when the exchange rejects the symbol (some
+    delisted contracts are no longer served; the store rebuilt them from the archive),
+    ``SourceError`` when it still fails."""
+    try:
+        return with_retry(call, params)
+    except ccxt.BadSymbol:
+        return None
+    except ccxt.BaseError as e:
+        raise SourceError(f"{getattr(call, '__name__', 'fapi')} {params.get('symbol')}: {e}") from e
 
 
 def _counted(fn: Callable, label: str, every: int = 50) -> Callable:
@@ -159,14 +172,14 @@ def binance_sources(exchange: ccxt.Exchange) -> Sources:
     def api_klines(symbol: str, interval: str, lo: pd.Timestamp, hi: pd.Timestamp):
         params = {"symbol": symbol, "interval": interval, "limit": 1500}
         params |= {"startTime": _ms(lo), "endTime": _ms(hi) - 1}
-        rows = with_retry(exchange.fapiPublicGetKlines, params)
-        return klines_to_frame(rows, exchange.milliseconds())
+        rows = _api(exchange.fapiPublicGetKlines, params)
+        return None if rows is None else klines_to_frame(rows, exchange.milliseconds())
 
     def api_funding(symbol: str, lo: pd.Timestamp, hi: pd.Timestamp):
         params = {"symbol": symbol, "startTime": _ms(lo), "endTime": _ms(hi) - 1, "limit": 1000}
-        rows = with_retry(exchange.fapiPublicGetFundingRate, params)
+        rows = _api(exchange.fapiPublicGetFundingRate, params)
         time.sleep(FUNDING_PAUSE)
-        return funding_to_frame(rows)
+        return None if rows is None else funding_to_frame(rows)
 
     def archive_klines(symbol: str, interval: str, month: str):
         key = f"{KLINES_PREFIX}{symbol}/{interval}/{symbol}-{interval}-{month}.zip"
@@ -181,7 +194,11 @@ def binance_sources(exchange: ccxt.Exchange) -> Sources:
         return _archive(f"{METRICS_PREFIX}{symbol}/{symbol}-metrics-{day}.zip", parse_metrics_csv)
 
     def archive_months(symbol: str, interval: str) -> list[str]:
-        return sorted(k[-11:-4] for k in archive_zip_keys(f"{KLINES_PREFIX}{symbol}/{interval}/"))
+        try:
+            keys = archive_zip_keys(f"{KLINES_PREFIX}{symbol}/{interval}/")
+        except requests.RequestException as e:
+            raise SourceError(f"archive listing {symbol}: {e}") from e
+        return sorted(k[-11:-4] for k in keys)
 
     return Sources(
         api_klines=_counted(api_klines, "api klines"),

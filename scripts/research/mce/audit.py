@@ -353,14 +353,20 @@ def zombie_member_days(members: pd.DataFrame, quote_volume: pd.DataFrame) -> pd.
 # ------------------------------------------------------------------ sampled verification
 
 
+class SourceError(Exception):
+    """A source still failed after its retries (network, server): the unit is reported as a
+    warning and the verification goes on."""
+
+
 @dataclass(frozen=True)
 class Sources:
-    """Independent copies of the stored data. Archive readers return None when the file does not
-    exist; ``archive_months`` lists the ``YYYY-MM`` monthly kline files of a symbol."""
+    """Independent copies of the stored data. Readers return None when the source does not have
+    the data (no archive file, a symbol the API rejects) and raise ``SourceError`` when it fails;
+    ``archive_months`` lists the ``YYYY-MM`` monthly kline files of a symbol."""
 
-    api_klines: Callable[[str, str, pd.Timestamp, pd.Timestamp], pd.DataFrame]
+    api_klines: Callable[[str, str, pd.Timestamp, pd.Timestamp], pd.DataFrame | None]
     archive_klines: Callable[[str, str, str], pd.DataFrame | None]
-    api_funding: Callable[[str, pd.Timestamp, pd.Timestamp], pd.DataFrame]
+    api_funding: Callable[[str, pd.Timestamp, pd.Timestamp], pd.DataFrame | None]
     archive_funding: Callable[[str, str], pd.DataFrame | None]
     archive_metrics: Callable[[str, str], pd.DataFrame | None]
     archive_months: Callable[[str, str], list[str]]
@@ -568,10 +574,17 @@ def verify_sample(
         if kind != "dates" and not (store_path / kind).exists():
             continue
         for symbol, period in _pick(_units(store, kind, now), n, rng):
-            if kind == "dates":
-                sample, rows = _verify_dates(store, sources, symbol, now)
-            else:
-                sample, rows = _verify_unit(store, sources, kind, symbol, period)
+            try:
+                if kind == "dates":
+                    sample, rows = _verify_dates(store, sources, symbol, now)
+                else:
+                    sample, rows = _verify_unit(store, sources, kind, symbol, period)
+            except SourceError as e:
+                sample = {"kind": kind, "symbol": symbol, "period": period, "error": str(e)}
+                when = _period_window(kind, period)[0] if period else pd.NaT
+                rows = [
+                    _issue(kind, symbol, "source_error", when, f"source failed: {e}", "warning")
+                ]
             samples.append(sample)
             issues += rows
     return pd.DataFrame(samples), _frame(issues)
