@@ -43,7 +43,7 @@ Code nằm ở `scripts/research/mce/` (package `mce`):
 | `pit.py` | Khung point-in-time từ kho `pit/`: nến, regime, OI chụp **trước** thời điểm quyết định (kho lưu trữ, bổ sung bằng OI từ API cho những ngày kho chưa công bố), cờ thuộc top-N; kho giả để chạy thử |
 | `walkforward.py` | Chia walk-forward cuốn chiếu có purge + embargo |
 | `journal.py` | Nhật ký setup sqlite chỉ ghi thêm (trigger chặn sửa/xóa): ghi setup trước khi biết kết quả, chấm một lần (SL/TP/thời gian hoặc thoát theo luật), đối chiếu với bản chạy lại (mục 7) |
-| `live.py` | Cập nhật kho cho kiểm định tiến: OI từ API `openInterestHist` (đổi nhãn +5 phút cho khớp kho), giá mua/bán và trượt giá theo sổ lệnh lúc quyết định |
+| `live.py` | Cập nhật kho cho kiểm định tiến: OI từ API `openInterestHist` (API ghi nhãn trễ 5 phút so với kho: ảnh chụp kho 15:50 = dòng API 15:55; đổi nhãn rồi mới dùng), thử lại khi lỗi mạng, giá mua/bán và trượt giá theo sổ lệnh lúc quyết định |
 | `forward.py` | Luật kiểm định tiến: setup đầy đủ (rủi ro 1%, trần đòn bẩy, chi phí theo R, luật bỏ setup), sự kiện hook trên khung point-in-time, ensemble Donchian hai chiều, kiểm xu hướng liều–đáp ứng |
 | `recorder.py` | Ghi dữ liệu sàn không lưu lịch sử (mục 9): ghi nối thêm JSONL theo giờ, gộp parquet theo ngày, log khoảng trống, báo cáo độ phủ |
 | `archive.py` | Tải nến (1d, 4h) + funding cho **mọi** perp USDT-M từng niêm yết, kể cả đã delist (liệt kê từ kho data.binance.vision), và lịch sử OI / tỷ lệ long-short từ file `metrics` theo ngày của kho (API chỉ giữ 30 ngày) |
