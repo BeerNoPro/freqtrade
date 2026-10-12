@@ -298,8 +298,9 @@ def cross_check_daily(
 def compare_frames(
     stored: pd.DataFrame, source: pd.DataFrame, cols: list[str], rtol: float = 1e-9
 ) -> pd.DataFrame:
-    """Rows of ``stored`` and ``source`` (same window) that differ: a value beyond ``rtol``, or a
-    date present on one side only."""
+    """Rows of ``stored`` and ``source`` (same window) that differ: a value beyond ``rtol``
+    (``value``), a value the store lacks but the source has (``missing_value``), or a date
+    present on one side only."""
     a = stored.drop_duplicates("date").set_index("date")
     b = source.drop_duplicates("date").set_index("date")
     rows = [
@@ -314,8 +315,9 @@ def compare_frames(
     for c in (c for c in cols if c in a.columns and c in b.columns):
         x, y = a.loc[common, c].to_numpy(float), b.loc[common, c].to_numpy(float)
         bad = ~np.isclose(x, y, rtol=rtol, atol=0.0, equal_nan=True)
+        status = np.where(np.isnan(x) & ~np.isnan(y), "missing_value", "value")
         rows += [
-            {"date": common[i], "column": c, "stored": x[i], "source": y[i], "status": "value"}
+            {"date": common[i], "column": c, "stored": x[i], "source": y[i], "status": status[i]}
             for i in np.flatnonzero(bad)
         ]
     out = pd.DataFrame(rows, columns=DIFF_COLS)
@@ -457,24 +459,42 @@ def _period_window(kind: str, period: str) -> tuple[pd.Timestamp, pd.Timestamp]:
     return lo, lo + pd.offsets.MonthBegin(1)
 
 
-def _compare_sources(
-    stored: pd.DataFrame, sources: dict[str, pd.DataFrame | None], cols: list[str], lo, hi
-) -> tuple[dict, list[str]]:
-    """Differences per source (None when the source has no file) and a text per mismatch."""
-    counts, texts = {}, []
-    for label, src in sources.items():
-        if src is None:
-            counts[label] = np.nan
-            continue
-        diff = compare_frames(stored, _window(src, lo, hi), cols)
-        counts[label] = len(diff)
-        if len(diff):
-            first = diff.iloc[0]
-            texts.append(
-                f"{label}: {len(diff)} differences, first {first['date']} {first['column']} "
-                f"stored {first['stored']} source {first['source']} ({first['status']})"
+def _describe(label: str, diff: pd.DataFrame) -> str:
+    first = diff.iloc[0]
+    return (
+        f"{label}: {len(diff)} differences, first {first['date']} {first['column']} "
+        f"stored {first['stored']} source {first['source']} ({first['status']})"
+    )
+
+
+def _classify(
+    kind: str, symbol: str, when: pd.Timestamp, diffs: dict[str, pd.DataFrame]
+) -> list[dict]:
+    """Issues from the differences with each available source:
+    - source_mismatch (critical): the store differs from every available source;
+    - sources_disagree (warning): the store equals one Binance source, the other differs;
+    - store_missing_value (warning): values the store lacks but a source has."""
+    real = {k: d[d["status"] != "missing_value"] for k, d in diffs.items()}
+    rows = []
+    if real and all(len(d) for d in real.values()):
+        text = "; ".join(_describe(k, d) for k, d in real.items())
+        rows.append(_issue(kind, symbol, "source_mismatch", when, text, "critical"))
+    elif any(len(d) for d in real.values()):
+        text = "; ".join(_describe(k, d) for k, d in real.items() if len(d))
+        same = ", ".join(k for k, d in real.items() if not len(d))
+        rows.append(
+            _issue(
+                kind, symbol, "sources_disagree", when, f"{text}; store equals {same}", "warning"
             )
-    return counts, texts
+        )
+    for label, d in diffs.items():
+        gap = d[d["status"] == "missing_value"]
+        if len(gap):
+            cols = ", ".join(sorted(set(gap["column"])))
+            detail = f"{len(gap)} values missing in the store ({cols}), present in {label}"
+            rows.append(_issue(kind, symbol, "store_missing_value", when, detail, "warning"))
+            break
+    return rows
 
 
 def _verify_unit(
@@ -504,11 +524,21 @@ def _verify_unit(
     else:
         cols = [c for c in stored.columns if c != "date"]
         got = {"archive": sources.archive_metrics(symbol, period)}
-    counts, texts = _compare_sources(stored, got, cols, lo, hi)
+    diffs = {
+        label: compare_frames(stored, _window(src, lo, hi), cols)
+        for label, src in got.items()
+        if src is not None
+    }
     sample = {"kind": kind, "symbol": symbol, "period": period, "rows": len(stored)}
-    sample |= {f"{k}_diff": v for k, v in counts.items()}
-    issues = [_issue(kind, symbol, "source_mismatch", lo, text, "critical") for text in texts]
-    return sample, issues
+    for label in got:
+        d = diffs.get(label)
+        sample[f"{label}_diff"] = (
+            np.nan if d is None else int((d["status"] != "missing_value").sum())
+        )
+        sample[f"{label}_missing"] = (
+            np.nan if d is None else int((d["status"] == "missing_value").sum())
+        )
+    return sample, _classify(kind, symbol, lo, diffs)
 
 
 def _month(t: pd.Timestamp) -> str:

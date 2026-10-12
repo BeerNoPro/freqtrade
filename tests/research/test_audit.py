@@ -279,6 +279,13 @@ def test_compare_frames() -> None:
     status = dict(zip(diff["date"], diff["status"], strict=True))
     assert status == {a["date"][5]: "missing_in_store", a["date"][6]: "missing_in_source"}
 
+    hole = a.copy()
+    hole.loc[7, "volume"] = np.nan  # the store lacks a value the source has
+    diff = compare_frames(hole, a, cols)
+    assert diff[["date", "column", "status"]].values.tolist() == [
+        [a["date"][7], "volume", "missing_value"]
+    ]
+
 
 # ------------------------------------------------------------------ 9 verification, fake sources
 
@@ -296,8 +303,17 @@ def _month(month: str) -> tuple[pd.Timestamp, pd.Timestamp]:
     return start, start + pd.offsets.MonthBegin(1)
 
 
-def _fake_sources(store: Path, altered: list) -> Sources:
-    """Sources that serve the store's own rows; the first archive month served is altered once."""
+def _fake_sources(store: Path, altered: list, api_too: bool = False) -> Sources:
+    """Sources that serve the store's own rows. The first archive month served is altered once
+    (and the API rows of that same unit with ``api_too``: the API is read first)."""
+    api_calls: list = []
+
+    def api_klines(symbol: str, interval: str, lo: pd.Timestamp, hi: pd.Timestamp):
+        df = _window(_read(store, f"klines_{interval}", symbol), lo, hi)
+        api_calls.append(symbol)
+        if api_too and len(api_calls) == 1:
+            df.loc[0, "close"] *= 1.05
+        return df
 
     def archive_klines(symbol: str, interval: str, month: str) -> pd.DataFrame:
         df = _window(_read(store, f"klines_{interval}", symbol), *_month(month))
@@ -311,7 +327,7 @@ def _fake_sources(store: Path, altered: list) -> Sources:
         return sorted(d.dt.strftime("%Y-%m").unique())
 
     return Sources(
-        api_klines=lambda s, i, a, b: _window(_read(store, f"klines_{i}", s), a, b),
+        api_klines=api_klines,
         archive_klines=archive_klines,
         api_funding=lambda s, a, b: _window(_read(store, "funding", s), a, b),
         archive_funding=lambda s, m: _window(_read(store, "funding", s), *_month(m)),
@@ -325,6 +341,8 @@ def _fake_sources(store: Path, altered: list) -> Sources:
 
 
 def test_verify_reports_exactly_the_altered_value(tmp_path: Path) -> None:
+    """The store equals the API but not the archive: the two Binance sources disagree (warning).
+    The store differs from both: the store is wrong (critical)."""
     synthetic_store(tmp_path, n_coins=3, start="2024-01-01", end="2024-04-01")
     empty = _read(tmp_path, "klines_1d", "C00USDT").iloc[:0]  # coin without rows in the window
     empty.to_parquet(tmp_path / "klines_1d" / "C09USDT.parquet", index=False)
@@ -335,13 +353,41 @@ def test_verify_reports_exactly_the_altered_value(tmp_path: Path) -> None:
     assert "C09USDT" not in set(samples["symbol"])
     assert len(altered) == 1 and len(issues) == 1
     row = issues.iloc[0]
-    assert row["check"] == "source_mismatch" and row["severity"] == "critical"
+    assert row["check"] == "sources_disagree" and row["severity"] == "warning"
     assert (
         row["symbol"] == altered[0][0] and "archive" in row["detail"] and "close" in row["detail"]
     )
+
+    both = _fake_sources(tmp_path, [], api_too=True)
+    _, issues = verify_sample(tmp_path, both, 4, 0, ("klines_1d",), now=now)
+    assert issues[["check", "severity"]].values.tolist() == [["source_mismatch", "critical"]]
+
     again, _ = verify_sample(tmp_path, _fake_sources(tmp_path, [None]), 4, 0, now=now)
     picked = ["kind", "symbol", "period"]
     pd.testing.assert_frame_equal(samples[picked], again[picked])  # same seed, same sample
+
+
+def test_verify_store_missing_values(tmp_path: Path) -> None:
+    """A column the store left empty but both sources fill: a gap in the store, not wrong data."""
+    synthetic_store(tmp_path, n_coins=2, start="2024-01-01", end="2024-04-01")
+    for s in ("C00USDT", "C01USDT"):
+        d = _read(tmp_path, "klines_1d", s).assign(taker_buy_quote=np.nan)
+        d.to_parquet(tmp_path / "klines_1d" / f"{s}.parquet", index=False)
+    base = _fake_sources(tmp_path, [None])
+
+    def filled(df: pd.DataFrame) -> pd.DataFrame:
+        return df.assign(taker_buy_quote=1.0)
+
+    sources = replace(
+        base,
+        api_klines=lambda *a: filled(base.api_klines(*a)),
+        archive_klines=lambda *a: filled(base.archive_klines(*a)),
+    )
+    now = pd.Timestamp("2024-04-15", tz="UTC")
+    samples, issues = verify_sample(tmp_path, sources, 3, 0, ("klines_1d",), now=now)
+    assert len(samples) == 3 and set(issues["check"]) == {"store_missing_value"}
+    assert len(issues) == 3 and (issues["severity"] == "warning").all()
+    assert "taker_buy_quote" in issues["detail"].iloc[0]
 
 
 def test_verify_survives_unavailable_and_failing_sources(tmp_path: Path) -> None:
