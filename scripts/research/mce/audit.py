@@ -327,16 +327,19 @@ def compare_frames(
 def apply_known(issues: pd.DataFrame, known: pd.DataFrame) -> pd.DataFrame:
     """Issues listed in ``known`` (kind, symbol, check, date as ``YYYY-MM-DD``, reason: checked by
     hand against Binance) get severity ``known`` and the reason added to their detail, so that
-    only new problems count as critical."""
+    only new problems count as critical. Symbol ``*`` matches every symbol (an exchange-wide
+    day)."""
     out = issues.copy()
     if known.empty or out.empty:
         return out
 
-    def keys(df: pd.DataFrame) -> pd.Series:
+    def keys(df: pd.DataFrame, symbol: pd.Series) -> pd.Series:
         day = pd.to_datetime(df["date"], utc=True).dt.strftime("%Y-%m-%d")
-        return df["kind"] + "|" + df["symbol"] + "|" + df["check"] + "|" + day
+        return df["kind"] + "|" + symbol + "|" + df["check"] + "|" + day
 
-    reason = out.pipe(keys).map(dict(zip(keys(known), known["reason"], strict=True)))
+    listed = dict(zip(keys(known, known["symbol"]), known["reason"], strict=True))
+    reason = keys(out, out["symbol"]).map(listed)
+    reason = reason.fillna(keys(out, pd.Series("*", index=out.index)).map(listed))
     hit = reason.notna()
     out.loc[hit, "severity"] = "known"
     out.loc[hit, "detail"] = out.loc[hit, "detail"] + " | known: " + reason[hit]

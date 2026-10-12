@@ -164,6 +164,9 @@ def test_known_issues_are_downgraded() -> None:
     assert "archive" in out["detail"].iloc[0]
     assert apply_known(issues, known.iloc[:0])["severity"].tolist() == ["critical", "critical"]
 
+    every = known.assign(symbol="*", date="2024-03-29")  # an exchange-wide day, any symbol
+    assert apply_known(issues, every)["severity"].tolist() == ["critical", "known"]
+
 
 # ------------------------------------------------------------------ 5 funding
 
