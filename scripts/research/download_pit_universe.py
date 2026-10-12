@@ -4,6 +4,7 @@ included): the point-in-time universe and the inputs of models trained on it.
 
     .venv/Scripts/python.exe scripts/research/download_pit_universe.py
     .venv/Scripts/python.exe scripts/research/download_pit_universe.py --symbols BTCUSDT LUNAUSDT
+    .venv/Scripts/python.exe scripts/research/download_pit_universe.py --outdir <store> --plan-only
 
 Daily candles: every candidate symbol (crypto underlying, see ``mce.universe.is_candidate``),
 used to rank the universe. Funding, candles of the other ``--intervals`` and positioning metrics:
@@ -85,6 +86,36 @@ def first_member_dates(
     return {s: members.index[members[s]].min() for s in sorted(members.columns)}
 
 
+def estimate_volume(
+    starts: dict[str, pd.Timestamp],
+    end: pd.Timestamp,
+    have_metrics: dict[str, set[str]] | None = None,
+) -> dict[str, int]:
+    """Symbols, symbol-days in [start, end) and daily metrics files not stored yet
+    (``have_metrics``: symbol -> stored ``YYYY-MM-DD`` days). The archive serves one metrics file
+    per symbol-day, the heaviest part of a sync."""
+    have = have_metrics or {}
+    total = missing = 0
+    for symbol, start in starts.items():
+        if start > end:
+            raise ValueError(f"{symbol}: start {start} after end {end}")
+        last = end - pd.Timedelta(days=1)  # end is exclusive
+        days = pd.date_range(start.floor("D"), last, freq="D").strftime("%Y-%m-%d")
+        total += len(days)
+        missing += len(set(days) - have.get(symbol, set()))
+    return {"symbols": len(starts), "symbol_days": total, "metrics_files_missing": missing}
+
+
+def _stored_days(outdir: Path, kind: str, symbols: list[str]) -> dict[str, set[str]]:
+    days = {}
+    for symbol in symbols:
+        path = outdir / kind / f"{symbol}.parquet"
+        if path.exists():
+            dates = pd.read_parquet(path, columns=["date"])["date"]
+            days[symbol] = set(dates.dt.strftime("%Y-%m-%d"))
+    return days
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     parser.add_argument("--outdir", type=Path, default=Path("user_data/research/pit"))
@@ -95,6 +126,11 @@ def main() -> None:
     parser.add_argument("--intervals", nargs="+", default=["1d", "4h"])
     parser.add_argument("--warmup-days", type=int, default=100)
     parser.add_argument("--symbols", nargs="+", help="raw symbols, default: whole archive")
+    parser.add_argument(
+        "--plan-only",
+        action="store_true",
+        help="sync daily candles only, print the volume of the other kinds and stop",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -123,6 +159,14 @@ def main() -> None:
     firsts = first_member_dates(args.outdir, candidates, args.top + args.spare, args.min_history)
     warm = pd.Timedelta(days=args.warmup_days)
     starts = {s: max(start, d - warm) for s, d in firsts.items()}
+    if args.plan_only:
+        today = pd.Timestamp.now(tz="UTC").floor("D")
+        have = _stored_days(args.outdir, "metrics", list(starts))
+        est = estimate_volume(starts, today, have)
+        print(f"plan for {args.outdir} from {args.start}: {est}")
+        print(f"  funding and klines {args.intervals} for {est['symbols']} symbols; metrics:")
+        print(f"  {est['metrics_files_missing']} daily archive files to fetch")
+        return
     removed = prune(args.outdir, "funding", list(starts), start)
     added = _sync_all("funding", lambda s, t: sync_funding(exchange, s, args.outdir, t), starts)
     lost = _fill_from_archive(args.outdir, "funding", starts)
