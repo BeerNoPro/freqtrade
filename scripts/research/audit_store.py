@@ -11,8 +11,8 @@ candles served after a delisting; ``mce.universe.point_in_time_members`` with th
 ``mce.pit.daily_members``). ``--verify N``: N sampled units per data kind compared with two
 independent sources, the fapi endpoints and the data.binance.vision archive, plus the listing and
 delisting months of N symbols against the archive's monthly files (``--dates-all``: of every
-symbol). Ticker changes (``mce.listings``): marked renames and reused tickers measured on the
-store, unmarked pairs that look like a rename (warning ``rename_suspect``).
+symbol). Ticker changes (``mce.listings``): marked renames, reused and relisted tickers measured
+on the store, unmarked pairs that look like a rename (warning ``rename_suspect``).
 
 Writes ``<out>/<store>-<YYYYMMDD>/`` (summary.md, issues.csv, symbols.csv, zombie_members.csv,
 listings.csv, verify.csv) and a copy in ``<out>/latest/<store>/``. Exit code 1 when a critical
@@ -56,7 +56,7 @@ from mce.audit import (
     verify_sample,
     zombie_member_days,
 )
-from mce.listings import RENAMES, REUSED, listing_table, rename_candidates
+from mce.listings import RELISTED, RENAMES, REUSED, listing_table, rename_candidates
 from mce.live import with_retry
 from mce.universe import point_in_time_members
 
@@ -123,8 +123,8 @@ def zombie_members(store: Path, daily: dict[str, pd.DataFrame], top: int) -> pd.
 
 def listing_issues(listings: pd.DataFrame) -> pd.DataFrame:
     """Warnings of ticker changes: an unmarked pair that looks like a rename
-    (``rename_suspect``) and rows of a reused ticker dated before its new token
-    (``reused_rows``)."""
+    (``rename_suspect``) and rows of a reused or relisted ticker dated before its current token
+    or contract (``rows_before_current``)."""
     rows = [
         {
             "kind": "dates",
@@ -143,12 +143,12 @@ def listing_issues(listings: pd.DataFrame) -> pd.DataFrame:
         {
             "kind": "dates",
             "symbol": r.symbol,
-            "check": "reused_rows",
-            "date": r.reused_from,
-            "detail": f"{r.rows_before_reuse} rows before the new token's first day",
+            "check": "rows_before_current",
+            "date": r.current_from,
+            "detail": f"{r.rows_before_current} rows before the {r.ticker_change} ticker's start",
             "severity": "warning",
         }
-        for r in listings[listings["rows_before_reuse"] > 0].itertuples()
+        for r in listings[listings["rows_before_current"] > 0].itertuples()
     ]
     return pd.DataFrame(rows, columns=ISSUE_COLS)
 
@@ -315,10 +315,12 @@ def _listing_line(listings: pd.DataFrame, issues: pd.DataFrame) -> str:
         if new in t.index and pd.notna(t.at[new, "rename_gap_days"])
     ]
     reused = [f"{s} từ {d}" for s, d in REUSED.items() if s in t.index]
+    relisted = [f"{s} từ {d}" for s, d in RELISTED.items() if s in t.index]
     suspects = int((issues["check"] == "rename_suspect").sum()) if len(issues) else 0
     return (
         f"- Mã đổi tên đã đánh dấu: {', '.join(renames) or 'không có trong kho'}; mã dùng lại "
-        f"tên: {', '.join(reused) or 'không có trong kho'}; cặp nghi đổi tên chưa đánh dấu: "
+        f"tên: {', '.join(reused) or 'không có trong kho'}; mã niêm yết lại (kho thiếu hợp đồng "
+        f"cũ): {', '.join(relisted) or 'không có trong kho'}; cặp nghi đổi tên chưa đánh dấu: "
         f"{suspects} (`rename_suspect`, `listings.csv`)."
     )
 

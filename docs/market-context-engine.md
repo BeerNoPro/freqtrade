@@ -78,10 +78,17 @@ liệu thô; mọi đường đọc nghiên cứu bỏ dòng giả.
 - Ngoại lệ: `download_pit_universe.py` chọn coin "từng top-25" trên dữ liệu thô (`raw=True`), vì đổi danh sách đó sẽ
   làm `prune` xóa file; kiểm toán đọc file thô.
 
-**Mã đổi tên / dùng lại tên** (`mce.listings`, đánh dấu theo thông báo của Binance, người dùng xác nhận): MATIC→POL,
-RNDR→RENDER, FTM→S, BNX→FORM (mã mới không phải niêm yết mới: `is_new_listing`); LIT là token khác từ 2025-12-23
-(lịch sử token cũ chỉ còn ở kho lưu trữ, `pit_hist` thiếu nó). `rename_candidates` gợi ý cặp chưa đánh dấu (mã ngừng +
-mã mới trong ≤ 14 ngày, giá lệch ≤ 15%): chỉ là gợi ý, phần lớn trùng hợp; kiểm toán báo `rename_suspect`.
+**Mã đổi tên / dùng lại tên / niêm yết lại** (`mce.listings`, theo thông báo của Binance hoặc tháng niêm yết trong kho
+lưu trữ, người dùng xác nhận 2026-10-13):
+- Đổi tên (mã mới không phải niêm yết mới, `is_new_listing` sai): MATIC→POL, RNDR→RENDER, FTM→S, BNX→FORM, EOS→A,
+  TON→GRAM.
+- Dùng lại tên (token khác, là niêm yết mới): LIT từ 2025-12-23, PUMP từ 2025-07-10. Funding API trả cả lịch sử token
+  cũ: file funding PUMPUSDT ở `pit` có 407 kỳ của token cũ (kiểm toán báo `rows_before_current`).
+- Niêm yết lại cùng token (không phải niêm yết mới): CTK, MAVIA, AIA, SLP, CVC, CVX, TLM, ICP, BNX (đoạn 2023).
+- Với mã dùng lại tên / niêm yết lại, kho chỉ có hợp đồng hiện tại; hợp đồng cũ (đã delist) vắng mặt khỏi danh mục
+  thời đó → thiên lệch sống sót cho nghiên cứu ngoài top-20 (tải đoạn cũ từ kho lưu trữ khi cần).
+- `rename_candidates` gợi ý cặp chưa đánh dấu (mã ngừng + mã mới trong ≤ 14 ngày, giá lệch ≤ 15%): chỉ là gợi ý, phần
+  lớn trùng hợp; kiểm toán báo `rename_suspect`.
 
 **Kho `data.binance.vision`** có lịch sử (tải khi cần): nến mọi khung (cả mark, index, premium), funding, lệnh khớp,
 OI + long/short + taker mỗi 5 phút (`metrics`), độ dày sổ lệnh ±0,2–5% mỗi 30 giây (`bookDepth`).

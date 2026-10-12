@@ -41,9 +41,24 @@ def test_shipped_marks() -> None:
         "RNDRUSDT": "RENDERUSDT",
         "FTMUSDT": "SUSDT",
         "BNXUSDT": "FORMUSDT",
+        "EOSUSDT": "AUSDT",
+        "TONUSDT": "GRAMUSDT",
     }
-    assert listings.REUSED == {"LITUSDT": "2025-12-23"}
-    assert not is_new_listing("POLUSDT") and is_new_listing("LITUSDT")
+    assert listings.REUSED == {"LITUSDT": "2025-12-23", "PUMPUSDT": "2025-07-10"}
+    assert listings.RELISTED == {
+        "CTKUSDT": "2025-04-30",
+        "MAVIAUSDT": "2025-03-26",
+        "AIAUSDT": "2026-01-20",
+        "SLPUSDT": "2025-07-23",
+        "CVCUSDT": "2025-05-16",
+        "CVXUSDT": "2025-07-23",
+        "TLMUSDT": "2023-03-30",
+        "ICPUSDT": "2022-09-27",
+        "BNXUSDT": "2023-02-22",
+    }
+    assert not is_new_listing("POLUSDT") and not is_new_listing("GRAMUSDT")
+    assert is_new_listing("LITUSDT") and is_new_listing("PUMPUSDT")  # another token
+    assert not is_new_listing("CTKUSDT")  # the same token back after a delisting
 
 
 def test_unmarked_rename_is_suggested_and_marked_one_is_measured(
@@ -69,12 +84,18 @@ def test_unmarked_rename_is_suggested_and_marked_one_is_measured(
     assert not is_new_listing("NEWUSDT") and is_new_listing("LATEUSDT")
 
 
-def test_reused_ticker_rows_before_the_new_token(
+def test_rows_before_the_current_token_or_contract(
     store: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(listings, "REUSED", {"REUSEUSDT": "2024-02-01"})
+    monkeypatch.setattr(listings, "RELISTED", {"NEWUSDT": "2024-03-15", "LATEUSDT": "2024-06-01"})
     t = listing_table(store).set_index("symbol")
-    assert t.loc["REUSEUSDT", "reused_from"] == pd.Timestamp("2024-02-01", tz="UTC")
+    assert t.loc["REUSEUSDT", "current_from"] == pd.Timestamp("2024-02-01", tz="UTC")
+    assert t.loc["REUSEUSDT", "ticker_change"] == "reused"
     # the 31 January candles and the 30 prints from 01-20 00:00 to 01-29 16:00: the old token's
-    assert t.loc["REUSEUSDT", "rows_before_reuse"] == 31 + 30
-    assert t.loc["NEWUSDT", "rows_before_reuse"] == 0
+    assert t.loc["REUSEUSDT", "rows_before_current"] == 31 + 30
+    assert t.loc["NEWUSDT", "ticker_change"] == "relisted"
+    assert t.loc["NEWUSDT", "rows_before_current"] == 0  # the store holds only the new contract
+    assert t.loc["LATEUSDT", "rows_before_current"] == 31  # May: rows of an older contract
+    assert t.loc["OLDUSDT", "ticker_change"] == "" and t.loc["OLDUSDT", "rows_before_current"] == 0
+    assert not is_new_listing("NEWUSDT") and is_new_listing("OLDUSDT")

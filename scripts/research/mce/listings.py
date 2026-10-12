@@ -5,13 +5,21 @@ Ticker changes on Binance USDT-M perpetuals that mislead a study taken at face v
   is listed as a new contract a few days later. The new ticker is not a new listing for a study of
   listings, and the end of the old one is not an ordinary delisting.
 - Reused tickers: from a given day the ticker names another token. Rows before that day belong to
-  the old token (the API serves only the new one, so the store usually holds none; the old history
-  is only in the data.binance.vision archive).
+  the old token. Its first candle is a new listing.
+- Relisted tickers: the same token listed again after a delisting. Its first candle in the store is
+  not a new listing, and the old contract's history is missing from the store.
 
-The marks are facts from Binance announcements, checked by the user; dates, gaps and price
-ratios are measured on the store (``listing_table``, written by ``scripts/research/audit_store.py``
-to ``listings.csv``). ``rename_candidates`` suggests unmarked pairs to check by hand. Reads the raw
-files: this module describes the store, it is not a research loader.
+For reused and relisted tickers the API serves only the current contract, so the store holds no
+row of the old one (``rows_before_current`` checks it) and the old history is only in the
+data.binance.vision archive: delisted contracts missing from the point-in-time universe of their
+time (a survivorship gap for studies beyond the top 20).
+
+The marks come from Binance announcements or from the archive's listing months
+(``audit_store.py --dates-all``), confirmed by the user on 2026-10-13; dates are the first traded
+day of the current contract in the store; gaps and price ratios are measured on the store
+(``listing_table``, written by the audit to ``listings.csv``). ``rename_candidates`` suggests
+unmarked pairs to check by hand. Reads the raw files: this module describes the store, it is not a
+research loader.
 """
 
 import json
@@ -27,9 +35,27 @@ RENAMES: dict[str, str] = {
     "RNDRUSDT": "RENDERUSDT",  # Render RNDR -> RENDER, 2024-07
     "FTMUSDT": "SUSDT",  # Fantom FTM -> Sonic S, 2025-01
     "BNXUSDT": "FORMUSDT",  # BinaryX BNX -> Four FORM, 2025-03
+    "EOSUSDT": "AUSDT",  # EOS -> Vaulta A, perpetual from 2025-05-28
+    "TONUSDT": "GRAMUSDT",  # Toncoin TON -> Gram GRAM, 2026-06 (GRAM trades from 2026-07-02)
 }
-# ticker -> first day of the token it names now (its first candle in the store)
-REUSED: dict[str, str] = {"LITUSDT": "2025-12-23"}
+# ticker -> first day of the token it names now
+REUSED: dict[str, str] = {
+    "LITUSDT": "2025-12-23",
+    "PUMPUSDT": "2025-07-10",  # pump.fun PUMP; an earlier PUMPUSDT (2025-04) was another token
+}
+# ticker -> first day of the current contract after a delisting of the same token
+RELISTED: dict[str, str] = {
+    "CTKUSDT": "2025-04-30",  # delisted 2024-04-01 (announced)
+    "MAVIAUSDT": "2025-03-26",  # delisted 2024-12-16 (announced)
+    "AIAUSDT": "2026-01-20",  # relaunched 2026-01-20 after a 2025 delisting (announced)
+    # from the archive's listing months only, no announcement found
+    "SLPUSDT": "2025-07-23",
+    "CVCUSDT": "2025-05-16",
+    "CVXUSDT": "2025-07-23",
+    "TLMUSDT": "2023-03-30",
+    "ICPUSDT": "2022-09-27",
+    "BNXUSDT": "2023-02-22",
+}
 STOPPED_AFTER = pd.Timedelta(days=7)  # no trade for longer than this before the store's last day
 KINDS = ("klines_1d", "klines_4h", "funding", "metrics", "metrics_api")
 COLS = [
@@ -44,14 +70,16 @@ COLS = [
     "renamed_to",
     "rename_gap_days",
     "rename_price_ratio",
-    "reused_from",
-    "rows_before_reuse",
+    "ticker_change",
+    "current_from",
+    "rows_before_current",
 ]
 
 
 def is_new_listing(symbol: str) -> bool:
-    """False for the new ticker of a rename: its first candle is a migration, not a listing."""
-    return symbol not in RENAMES.values()
+    """False when the ticker's first candle in the store is not a token's first listing: the new
+    ticker of a rename (a migration) or a relisted contract (the same token again)."""
+    return symbol not in RENAMES.values() and symbol not in RELISTED
 
 
 def _symbols(pit: Path) -> list[str]:
@@ -75,7 +103,8 @@ def listing_table(pit: Path) -> pd.DataFrame:
     status (``stopped`` when the last trade is more than 7 days before the store's last day, else
     ``trading``; ``empty`` without any trade), closes of the first and last traded days, the rename
     links with the gap in days and the price ratio (new first close / old last close), and for a
-    reused ticker the rows of any kind dated before its new token."""
+    reused or relisted ticker (``ticker_change``) the first day of its current token or contract
+    and the rows of any kind dated before it."""
     rows = []
     for symbol in _symbols(pit):
         path = pit / "klines_1d" / f"{symbol}.parquet"
@@ -107,13 +136,15 @@ def listing_table(pit: Path) -> pd.DataFrame:
             i = t.index[t["symbol"] == sym][0]
             t.at[i, link] = other
             t.at[i, "rename_gap_days"], t.at[i, "rename_price_ratio"] = gap, ratio
-    t["rows_before_reuse"] = 0
-    for symbol, day in REUSED.items():
-        hit = t.index[t["symbol"] == symbol]
-        if len(hit):
-            first = pd.Timestamp(day, tz="UTC")
-            t.at[hit[0], "reused_from"] = first
-            t.at[hit[0], "rows_before_reuse"] = _rows_before(pit, symbol, first)
+    t["ticker_change"], t["rows_before_current"] = "", 0
+    for change, marks in (("reused", REUSED), ("relisted", RELISTED)):
+        for symbol, day in marks.items():
+            hit = t.index[t["symbol"] == symbol]
+            if len(hit):
+                first = pd.Timestamp(day, tz="UTC")
+                t.at[hit[0], "ticker_change"] = change
+                t.at[hit[0], "current_from"] = first
+                t.at[hit[0], "rows_before_current"] = _rows_before(pit, symbol, first)
     return t
 
 
