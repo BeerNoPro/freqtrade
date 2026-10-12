@@ -1,6 +1,7 @@
 """Data-store audit: every check finds a planted defect and stays silent on clean data (no
 network: the verification sources are fakes)."""
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -484,4 +485,30 @@ def test_command_line_finds_planted_defects(tmp_path: Path) -> None:
     assert set(zombies["symbol"]) == {"C02USDT"} and len(zombies) == 10
     symbols = pd.read_csv(run / "symbols.csv")
     assert len(symbols) == 4 * 4  # 4 coins x 4 kinds
-    assert (run / "summary.md").read_text(encoding="utf-8").strip()
+    listings = pd.read_csv(run / "listings.csv").set_index("symbol")
+    assert len(listings) == 4 and listings.loc["C02USDT", "status"] == "stopped"
+    assert (listings.drop(index="C02USDT")["status"] == "trading").all()
+    assert "Mã đổi tên" in (run / "summary.md").read_text(encoding="utf-8")
+
+
+def test_command_line_flags_an_unmarked_rename(tmp_path: Path) -> None:
+    store, out = tmp_path / "store", tmp_path / "out"
+    synthetic_store(store, n_coins=3, start="2024-01-01", end="2024-07-01")
+    d = _read(store, "klines_1d", "C00USDT")
+    last = d["close"].iloc[89]
+    d.loc[90:, ["open", "high", "low", "close"]] = last  # stops after day 90 (2024-03-30)
+    d.loc[90:, ["volume", "quote_volume"]] = 0.0
+    d.to_parquet(store / "klines_1d" / "C00USDT.parquet", index=False)
+    new = d.iloc[95:].copy()  # a ticker listed 5 days later at the same price
+    new[["open", "high", "low", "close"]] = last
+    new[["volume", "quote_volume"]] = 1e6
+    new.to_parquet(store / "klines_1d" / "NEWUSDT.parquet", index=False)
+    meta = json.loads((store / "symbols.json").read_text(encoding="utf-8"))
+    meta["candidates"].append("NEWUSDT")
+    (store / "symbols.json").write_text(json.dumps(meta), encoding="utf-8")
+    args = ["--store", str(store), "--out", str(out), "--log", str(tmp_path / "audit.log")]
+    args += ["--known", str(tmp_path / "no_known_issues.csv"), "--kinds", "klines_1d"]
+    assert audit_main(args) == 0  # a warning, not critical
+    issues = pd.read_csv(out / "latest" / "store" / "issues.csv")
+    suspect = issues[issues["check"] == "rename_suspect"]
+    assert suspect["symbol"].tolist() == ["NEWUSDT"] and "C00USDT" in suspect["detail"].iloc[0]

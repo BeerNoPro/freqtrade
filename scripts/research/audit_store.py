@@ -10,10 +10,13 @@ candles, and the members of the top-N point-in-time universe on days without any
 candles served after a delisting; ``mce.universe.point_in_time_members`` with the parameters of
 ``mce.pit.daily_members``). ``--verify N``: N sampled units per data kind compared with two
 independent sources, the fapi endpoints and the data.binance.vision archive, plus the listing and
-delisting months of N symbols against the archive's monthly files.
+delisting months of N symbols against the archive's monthly files (``--dates-all``: of every
+symbol). Ticker changes (``mce.listings``): marked renames and reused tickers measured on the
+store, unmarked pairs that look like a rename (warning ``rename_suspect``).
 
 Writes ``<out>/<store>-<YYYYMMDD>/`` (summary.md, issues.csv, symbols.csv, zombie_members.csv,
-verify.csv) and a copy in ``<out>/latest/<store>/``. Exit code 1 when a critical issue is found.
+listings.csv, verify.csv) and a copy in ``<out>/latest/<store>/``. Exit code 1 when a critical
+issue is found.
 """
 
 import argparse
@@ -53,6 +56,7 @@ from mce.audit import (
     verify_sample,
     zombie_member_days,
 )
+from mce.listings import RENAMES, REUSED, listing_table, rename_candidates
 from mce.live import with_retry
 from mce.universe import point_in_time_members
 
@@ -101,7 +105,8 @@ def scan_store(
 
 def zombie_members(store: Path, daily: dict[str, pd.DataFrame], top: int) -> pd.DataFrame:
     """Top-``top`` point-in-time members (30-day median quote volume, 90 daily closes, month-end
-    ranking, as ``mce.pit.daily_members``) on days without any trade."""
+    ranking) on days without any trade, when the raw candles are taken at face value. Research
+    reads drop those candles (``mce.archive.read_store_file``); this measures the raw store."""
     meta = store / "symbols.json"
     names = list(daily)
     if meta.exists():
@@ -114,6 +119,38 @@ def zombie_members(store: Path, daily: dict[str, pd.DataFrame], top: int) -> pd.
     volume = pd.DataFrame({s: f["quote_volume"] for s, f in frames.items()}).reindex(days)
     members = point_in_time_members(close.reindex(days), volume, top, 30, 90)
     return zombie_member_days(members, volume)
+
+
+def listing_issues(listings: pd.DataFrame) -> pd.DataFrame:
+    """Warnings of ticker changes: an unmarked pair that looks like a rename
+    (``rename_suspect``) and rows of a reused ticker dated before its new token
+    (``reused_rows``)."""
+    rows = [
+        {
+            "kind": "dates",
+            "symbol": c.new,
+            "check": "rename_suspect",
+            "date": c.new_first_traded,
+            "detail": (
+                f"first trade {c.gap_days} days after {c.old} stopped, first close / last close "
+                f"{c.price_ratio:.3f}: mark it in mce.listings.RENAMES if Binance renamed it"
+            ),
+            "severity": "warning",
+        }
+        for c in rename_candidates(listings).itertuples()
+    ]
+    rows += [
+        {
+            "kind": "dates",
+            "symbol": r.symbol,
+            "check": "reused_rows",
+            "date": r.reused_from,
+            "detail": f"{r.rows_before_reuse} rows before the new token's first day",
+            "severity": "warning",
+        }
+        for r in listings[listings["rows_before_reuse"] > 0].itertuples()
+    ]
+    return pd.DataFrame(rows, columns=ISSUE_COLS)
 
 
 # ------------------------------------------------------------------ Binance sources
@@ -238,6 +275,7 @@ def summary_text(
     issues: pd.DataFrame,
     zombies: pd.DataFrame,
     samples: pd.DataFrame,
+    listings: pd.DataFrame | None = None,
 ) -> str:
     count = issues["severity"].value_counts()
     files = symbols["kind"].value_counts().to_dict()
@@ -259,13 +297,30 @@ def summary_text(
             f"- Ngày-thành viên của danh mục rơi vào ngày không có giao dịch: {len(zombies)} "
             f"({by_year})."
         ),
-        "",
-        "## Lỗi theo loại kiểm tra và năm",
-        _table(_by_year(issues)),
     ]
+    if listings is not None:
+        lines.append(_listing_line(listings, issues))
+    lines += ["", "## Lỗi theo loại kiểm tra và năm", _table(_by_year(issues))]
     if len(samples):
         lines += ["", "## Đối chiếu với Binance (mẫu)", _verify_table(samples)]
     return "\n".join(lines) + "\n"
+
+
+def _listing_line(listings: pd.DataFrame, issues: pd.DataFrame) -> str:
+    t = listings.set_index("symbol")
+    renames = [
+        f"{old}→{new} ({int(t.at[new, 'rename_gap_days'])} ngày, tỷ lệ giá "
+        f"{t.at[new, 'rename_price_ratio']:.3f})"
+        for old, new in RENAMES.items()
+        if new in t.index and pd.notna(t.at[new, "rename_gap_days"])
+    ]
+    reused = [f"{s} từ {d}" for s, d in REUSED.items() if s in t.index]
+    suspects = int((issues["check"] == "rename_suspect").sum()) if len(issues) else 0
+    return (
+        f"- Mã đổi tên đã đánh dấu: {', '.join(renames) or 'không có trong kho'}; mã dùng lại "
+        f"tên: {', '.join(reused) or 'không có trong kho'}; cặp nghi đổi tên chưa đánh dấu: "
+        f"{suspects} (`rename_suspect`, `listings.csv`)."
+    )
 
 
 def _verify_table(samples: pd.DataFrame) -> str:
@@ -323,22 +378,37 @@ def run(args: argparse.Namespace) -> int:
         if daily
         else pd.DataFrame(columns=["symbol", "date"])
     )
+    listings = listing_table(store) if daily else None
+    found_parts = [listing_issues(listings)] if listings is not None else []
     samples = pd.DataFrame()
-    if args.verify:
-        exchange = ccxt.binanceusdm({"enableRateLimit": True})
-        vkinds = tuple(
-            k for k in VERIFY_KINDS if k in kinds or (k == "dates" and "klines_1d" in kinds)
-        )
-        samples, found = verify_sample(
-            store, binance_sources(exchange), args.verify, args.seed, vkinds, now
-        )
-        issues = pd.concat([p for p in (issues, found) if len(p)] or [issues], ignore_index=True)
+    dates_all = args.dates_all and "klines_1d" in kinds
+    if args.verify or dates_all:
+        sources = binance_sources(ccxt.binanceusdm({"enableRateLimit": True}))
+        runs = []
+        if args.verify:
+            vkinds = tuple(
+                k
+                for k in VERIFY_KINDS
+                if k in kinds or (k == "dates" and "klines_1d" in kinds and not dates_all)
+            )
+            runs.append((args.verify, vkinds))
+        if dates_all:  # every symbol, not a sample: the complete list of reused tickers
+            runs.append((len(daily), ("dates",)))
+        parts = []
+        for n, vkinds in runs:
+            got, found = verify_sample(store, sources, n, args.seed, vkinds, now)
+            parts.append(got)
+            found_parts.append(found)
+        samples = pd.concat(parts, ignore_index=True)
+    issues = pd.concat([p for p in (issues, *found_parts) if len(p)] or [issues], ignore_index=True)
     if args.known.exists():
         issues = apply_known(issues, pd.read_csv(args.known))
     tables = {"issues": issues, "symbols": symbols, "zombie_members": zombies}
+    if listings is not None:
+        tables["listings"] = listings
     if len(samples):
         tables["verify"] = samples
-    text = summary_text(store, now, symbols, issues, zombies, samples)
+    text = summary_text(store, now, symbols, issues, zombies, samples, listings)
     path = write_outputs(args.out, store, now, tables, text)
     critical = int((issues["severity"] == "critical").sum())
     logger.info("report %s: %d issues, %d critical", path, len(issues), critical)
@@ -356,6 +426,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--top", type=int, default=20, help="universe size for the member check")
     parser.add_argument("--verify", type=int, default=0, help="sampled units per kind (0: offline)")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--dates-all",
+        action="store_true",
+        help="listing months of every symbol against the archive (network), not a sample",
+    )
     parser.add_argument(
         "--known",
         type=Path,
