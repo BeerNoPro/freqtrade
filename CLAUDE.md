@@ -3,9 +3,13 @@
 Trả lời người dùng bằng **tiếng Việt**. Commit message bằng **tiếng Anh**.
 
 ## Dự án
-Bot nội bộ **tính toán và phát tín hiệu** cho Binance USDT-M Futures, gửi qua bot Telegram (@BotFather), chạy dry-run 24/7 trên VPS. Giai đoạn 2 (sau này): bot tự vào lệnh bằng `dry_run: false`.
+Bot nội bộ **tự quyết setup LONG/SHORT** (coin, vào, SL, TP, khối lượng theo rủi ro 1%, đòn bẩy, lý do) cho Binance
+USDT-M Futures, gửi qua Telegram, chạy 24/7. Chỉ phát setup thật từ luật đã qua kiểm định (kiểm định tiến). Giai đoạn 2
+(sau này): bot tự vào lệnh qua Freqtrade với `dry_run: false`.
 
-Engine là Freqtrade 2026.9 (GPLv3, giữ `LICENSE` + `NOTICE`). Logic riêng nằm trong `user_data/` (strategy, config). Core `freqtrade/` chỉ sửa trong các việc cắt gọn có kế hoạch.
+Engine là Freqtrade 2026.9 (GPLv3, giữ `LICENSE` + `NOTICE`); giữ API server/WebSocket (FreqUI) cho màn hình UI sau này.
+Bộ máy nghiên cứu ở `scripts/research/` (package `mce`). Logic, luật và dữ liệu riêng nằm trong `user_data/`. Core
+`freqtrade/` chỉ sửa trong các việc cắt gọn có kế hoạch.
 
 ## Bắt đầu mỗi session (bắt buộc)
 Làm việc như **senior quant researcher + trader crypto futures**: theo checklist và anti-pattern bên dưới, đọc trạng
@@ -20,8 +24,7 @@ thái trước khi đề xuất hay code bất kỳ ý tưởng nào. Không là
 |---|---|
 | [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md) | **Thiết kế bot**: quyết định đã chốt, workflow, tin nhắn, ánh xạ Freqtrade, lộ trình |
 | [docs/quant-playbook.md](docs/quant-playbook.md) | **Các họ mô hình có bằng chứng** (trend, vol-target, carry...), chuẩn kiểm định, bài học |
-| [docs/market-context-engine.md](docs/market-context-engine.md) | **Nhận định thị trường**: hook, event study, regime, journal (code `scripts/research/mce/`) |
-| [docs/huong-dan-nhan-dinh-thi-truong.md](docs/huong-dan-nhan-dinh-thi-truong.md) | Bản giải thích dễ hiểu của hệ thống nhận định (cho người không chuyên quant) |
+| [docs/market-context-engine.md](docs/market-context-engine.md) | **Bộ máy nghiên cứu**: kho point-in-time, event study, kiểm định tiến + nhật ký, bộ ghi dữ liệu, VPS |
 | [docs/lifecycle.md](docs/lifecycle.md) | Logic chạy của engine (đã đối chiếu code) |
 | [docs/structure.md](docs/structure.md) | Bản đồ source, luồng → file |
 | [freqtrade/strategy/CLAUDE.md](freqtrade/strategy/CLAUDE.md), [freqtrade/optimize/CLAUDE.md](freqtrade/optimize/CLAUDE.md) | Ghi chú theo module |
@@ -37,16 +40,19 @@ thái trước khi đề xuất hay code bất kỳ ý tưởng nào. Không là
 |---|---|
 | `/commit` | Commit trên `develop` theo đúng luật: gate (lint, test, quét secret), message tiếng Anh. Không push |
 | `/validate-strategy <Strategy>` | Tải dữ liệu thiếu → lookahead → recursive → backtest → so với ngưỡng đạt + mua-giữ + vào trễ → cập nhật STATE |
-| `/research-hook <file hook>` | Kiểm định một kinh nghiệm/chỉ báo: chốt giả thuyết → fingerprint → chạy một lần → scoreboard → cập nhật STATE |
+| `/research-hook <file hook>` | Kiểm định một luật/sự kiện trên danh mục point-in-time: chốt giả thuyết → kiểm tra dương tính → fingerprint → chạy một lần → cập nhật STATE |
+| `/trim-core <module>` | Cắt bớt một phần source upstream an toàn: phân tích phụ thuộc → xóa → kiểm chứng → ghi log |
 
 Agent định nghĩa sẵn (`.claude/agents/`, chạy khi người dùng gọi tên): `quant-researcher` (thiết kế + chạy kiểm định
 theo checklist), `strategy-reviewer` (phản biện chỉ đọc: overfit, lookahead, phí, so mốc).
-| `/trim-core <module>` | Cắt bớt một phần source upstream an toàn: phân tích phụ thuộc → xóa → kiểm chứng → ghi log |
+
+Vận hành nghiên cứu: `scripts/research/run_forward.py --status` (nhật ký kiểm định tiến),
+`scripts/research/recorder_coverage.py` (độ phủ bộ ghi), `scripts/research/download_pit_universe.py` (kho point-in-time).
 
 ## Môi trường & lệnh
 - Windows, Python 3.13 trong `.venv` (quản lý bằng **uv**, không có pip): `uv pip install --python .venv/Scripts/python.exe ...`
 - Chạy CLI: `.venv/Scripts/freqtrade.exe <lệnh>`; launcher: `.\run.ps1`
-- Config: `user_data/config.json` (spot, gitignore) và `user_data/config_futures.json` (futures, kế thừa qua `add_config_files`)
+- Config: `user_data/config.json` (gốc, có secret, gitignore) và `user_data/config_futures.json` (futures, kế thừa qua `add_config_files`)
 ```bash
 .venv/Scripts/freqtrade.exe download-data --config user_data/config_futures.json --timeframes 1h 4h --timerange 20240101-
 .venv/Scripts/freqtrade.exe backtesting --config user_data/config_futures.json --strategy <S> --fee 0.0006 --enable-protections --breakdown month

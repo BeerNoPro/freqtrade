@@ -12,16 +12,17 @@ Trạng thái và số lần thử: `user_data/research/STATE.md` (đọc trư�
 Tham số: `$ARGUMENTS` = `<StrategyName> [mode]`
 - `smoke` (mặc định khi đang code): dải 3 tháng gần nhất trong IS, chỉ để chắc strategy chạy được và có tín hiệu.
 - `full`: toàn bộ dải IS + lookahead + recursive.
-- `oos`: chạy dải holdout **một lần**. Chỉ chạy khi người dùng xác nhận trong lượt hiện tại đã chốt tham số.
-  Trước khi chạy: ghi fingerprint (sha256 file strategy) vào `user_data/research/fingerprints.jsonl`; kiểm tra
-  `holdout_runs` trong `user_data/research/thresholds.json`. Khác 0 → **dừng**, báo người dùng. Chạy xong → tăng lên 1.
+- `oos`: chạy dải ngoài mẫu **một lần**: dữ liệu từ ngày ghi fingerprint (sha256 file strategy, trong
+  `user_data/research/fingerprints.jsonl`) tới mốc đã chốt. Chỉ chạy khi người dùng xác nhận trong lượt hiện tại.
+  Holdout 2026-04 → 2026-10 đã dùng (`holdout_runs` = 1 trong `thresholds.json`): chỉ dùng lại khi người dùng duyệt
+  cho giả thuyết chưa từng chạy trên dải đó.
 
 ## Hằng số
 | Tên | Giá trị |
 |---|---|
 | Config | `user_data/config_futures.json` (hoặc config backtest riêng trong `user_data/`) |
 | IS (phát triển) | `20250101-20260401` (đọc lại `user_data/research/thresholds.json`) |
-| OOS (holdout) | `20260401-` (tới hiện tại) |
+| OOS | từ ngày ghi fingerprint của strategy tới mốc (kiểm định tiến) |
 | Smoke | `20260101-20260401` |
 | Phí | `--fee 0.0006` |
 | CLI | `.venv/Scripts/freqtrade.exe` |

@@ -22,8 +22,8 @@ Mô phỏng & tối ưu chiến lược dựa trên dữ liệu lịch sử. Kh�
 ## Lệnh liên quan
 
 ```bash
-freqtrade backtesting --strategy MyStrategy --timeframe 5m --timerange 20240101-20240601
-freqtrade hyperopt --strategy MyStrategy --hyperopt-loss SharpeHyperOptLoss --epochs 100
-freqtrade lookahead-analysis --strategy MyStrategy
+freqtrade backtesting --strategy <Strategy> --timeframe 5m --timerange 20240101-20240601
+freqtrade hyperopt --strategy <Strategy> --hyperopt-loss SharpeHyperOptLoss --epochs 100
+freqtrade lookahead-analysis --strategy <Strategy>
 freqtrade backtesting-analysis    # phân tích entry/exit chi tiết
 ```

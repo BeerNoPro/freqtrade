@@ -1,108 +1,87 @@
-# Thiết kế Bot tín hiệu Futures (nội bộ)
+# Thiết kế bot tín hiệu Futures (nội bộ)
 
-> Bot chỉ phát tín hiệu từ một strategy **đã qua kiểm định** (cổng trong
-> [.claude/rules/quant-strategy.md](../.claude/rules/quant-strategy.md)). Chưa có strategy đạt thì chưa có tín hiệu.
-> Kiến thức mô hình: [quant-playbook.md](quant-playbook.md). Liên quan: [lifecycle.md](lifecycle.md) ·
-> [structure.md](structure.md) · [market-context-engine.md](market-context-engine.md)
+> Bot chỉ phát setup thật từ luật **đã qua kiểm định**. Chưa có luật đạt thì setup chỉ là thử nghiệm, gắn nhãn rõ.
+> Bộ máy nghiên cứu: [market-context-engine.md](market-context-engine.md). Kiến thức mô hình: [quant-playbook.md](quant-playbook.md).
+> Engine Freqtrade (dùng ở giai đoạn tự vào lệnh): [lifecycle.md](lifecycle.md) · [structure.md](structure.md).
 
-## 0. Các quyết định đã chốt
+## 0. Quyết định đã chốt
 
 | Hạng mục | Quyết định |
 |---|---|
-| Mục đích | Bot **tính toán và phát tín hiệu**; giai đoạn 2 mới cho tự vào lệnh |
-| Thị trường | Binance **USDT-M Futures** (perpetual), chỉ coin crypto (không perp cổ phiếu/hàng hóa) |
-| Khung thời gian | **Ngày** (quyết định lúc đóng nến 00:00 UTC). Khung 1h/4h đã bị loại: phí ăn hết lợi thế |
-| Dạng strategy | Danh mục nhiều coin, tỷ trọng mục tiêu, tái cân bằng định kỳ (trend, carry...) |
-| Dữ liệu kiểm định | Chỉ dữ liệu gần, **2025 → nay**; danh mục point-in-time (chọn coin bằng thông tin có tại thời điểm đó) |
-| Nền tảng | Freqtrade giữ nguyên core; code riêng nằm trong `user_data/`, công cụ nghiên cứu ở `scripts/research/` |
-| Nơi chạy | VPS 24/7, dry-run (không đặt lệnh thật) |
-| Nơi nhận tin | Bot Telegram riêng tạo bằng @BotFather |
+| Mục đích | Bot là một quant/trader có kỷ luật: tự đọc dữ liệu, **tự quyết setup LONG/SHORT**, gửi qua Telegram. Giai đoạn 2 mới tự vào lệnh |
+| Sản phẩm | Setup hoàn chỉnh: coin, chiều, giá vào, SL, TP hoặc luật thoát, khối lượng theo rủi ro 1% vốn, đòn bẩy tối đa ≤ 5x isolated, kỳ vọng, lý do |
+| Thị trường | Binance USDT-M perpetual, chỉ coin crypto (không perp cổ phiếu, hàng hóa, stablecoin) |
+| Dữ liệu | Chỉ đánh giá trên **2025 → nay**; danh mục point-in-time; không dùng dữ liệu cũ hơn để đánh giá |
+| Kiểm định | Chốt luật trước (fingerprint) → chạy dải phát triển một lần → kiểm định tiến trên dữ liệu sau ngày chốt → dry-run ≥ 4 tuần |
+| Khung thời gian | Theo luật được kiểm định (4h cho sự kiện, ngày cho xu hướng). Chi phí phải nhỏ so với 1R: setup có phí + trượt giá > 0,20R bị bỏ |
+| Nơi chạy | VPS 24/7 (docker) hoặc máy local (task Windows) |
+| Nơi nhận tin | Bot Telegram riêng (@BotFather); nhãn "THỬ NGHIỆM" cho tới khi luật qua kiểm định |
+| Giao diện | Giữ API server + WebSocket của Freqtrade (FreqUI) và nhật ký setup/độ phủ dữ liệu làm nguồn cho màn hình UI sau này |
 
----
+## 1. Giải thích dễ hiểu
+- Bot giống một **phòng thí nghiệm + một người vào lệnh có kỷ luật**. Mỗi ý tưởng vào lệnh ("sập mạnh rồi hồi",
+  "phá đỉnh thì đi tiếp"...) được viết thành luật cụ thể, kiểm trên dữ liệu thật, rồi mới được phép phát setup.
+- Phần lớn ý tưởng phổ biến không có lãi sau phí. Đó là kết quả bình thường: luật đơn giản mà dễ kiếm tiền thì cả thị
+  trường đã dùng và lợi thế đã biến mất. Bot phải nói thẳng khi không có lợi thế.
+- **Kiểm định tiến**: chốt luật hôm nay, để dữ liệu từ hôm nay trở đi chấm điểm. Không ai (kể cả agent) sửa được luật
+  hay nhật ký sau khi chốt, nên không thể "làm đẹp" kết quả.
+- Lợi thế nhỏ cần nhiều thời gian mới chứng minh được: 6 tháng chỉ phát hiện được lợi thế rất lớn. Vì vậy kết luận chỉ
+  đưa ra ở các mốc đã chốt.
 
-## 1. Workflow
+## 2. Workflow
 
 ```
 Nghiên cứu (scripts/research, user_data/research)
-  giả thuyết + cơ chế + bằng chứng → fingerprint → chạy IS MỘT lần trên danh mục point-in-time
-  → đạt cổng? → người dùng duyệt → holdout MỘT lần → port sang Freqtrade
-                                                          │
-[VPS 24/7 — Freqtrade dry-run, khung 1d]                  ▼
-Binance Futures API (công khai)
- ├─ Danh mục: top coin crypto theo thanh khoản (pairlist tương đương luật point-in-time)
- ├─ Strategy: tính tỷ trọng mục tiêu mỗi coin lúc đóng nến ngày
- ├─ Cổng rủi ro: đòn bẩy tổng, isolated, liquidation buffer (luật trading-safety)
- ├─ Telegram: tỷ trọng mục tiêu + thay đổi hôm nay + lý do
- └─ Theo dõi: so lợi suất dry-run với backtest cùng kỳ
+  giả thuyết + cơ chế + bằng chứng → fingerprint → dải phát triển MỘT lần → đạt cổng?
+                                                                            │ đạt
+Runner kiểm định tiến 24/7 (run_forward.py)                                ▼
+ ├─ Mỗi 4h / mỗi ngày: cập nhật dữ liệu công khai Binance (nến, OI, funding, giá mua/bán, sổ lệnh)
+ ├─ Luật đã chốt → setup đầy đủ → ghi nhật ký TRƯỚC khi biết kết quả (không sửa được)
+ ├─ Chấm điểm khi setup đóng (phí + funding), đối chiếu với bản chạy lại trên kho lưu trữ
+ └─ Telegram (khi người dùng duyệt): tin setup, nhãn thử nghiệm cho tới khi đạt mốc
+                                                                            │ đạt mốc + dry-run ≥ 4 tuần
+Giai đoạn 2: strategy Freqtrade gọi lại chính các hàm `mce` (một nguồn code), tự vào lệnh vốn nhỏ
 ```
 
----
-
-## 2. Tin nhắn Telegram (dạng danh mục)
-
-**Hằng ngày sau 00:00 UTC, chỉ khi có thay đổi tỷ trọng:**
+## 3. Tin nhắn Telegram (setup)
 ```
-📊 Tái cân bằng 2026-10-12 (đóng nến ngày)
-Mua thêm:  SOL +4% (→ 9%) · DOGE mới 5%
-Giảm/đóng: XRP −6% (→ 0%)
-Giữ:       BTC 12% · ETH 8%
-Đòn bẩy tổng 1.4x · Mục tiêu biến động 25%/năm
-Lý do: SOL vượt đỉnh 20 ngày; XRP chạm dừng trailing
+THỬ NGHIỆM - chưa kiểm định, không giao dịch theo
+LONG SOLUSDT (liquidation_bounce_4h@v1) - nến 4h đóng 2026-10-12T16:00:00+00:00
+Vào: 142.3 (giá đóng nến) · SL 136.9 (-3.8%) · TP 153.1 (+7.6%), thoát sau 12h nếu chưa chạm
+Khối lượng: 18.5 (2,633 USDT) cho rủi ro 1% vốn mẫu · đòn bẩy tối đa 5x isolated
+Chi phí ước tính 0.04R · Kỳ vọng: chưa kiểm định
+Lý do: Mua sau thanh lý: nến 4h sập -2.4 ATR, OI z -2.6 (bán cưỡng bức)
 ```
-**Tổng kết tuần:** lợi suất tuần, drawdown hiện tại, so với backtest cùng kỳ, chi phí phí + funding.
+Định dạng do `scripts/research/run_forward.py::message` tạo; hiện chỉ ghi ra `user_data/research/forward/messages.log`.
 
----
-
-## 3. Ánh xạ sang Freqtrade (không sửa core)
-
-| Thiết kế | Cài đặt trong Freqtrade |
-|---|---|
-| Khung ngày | `timeframe = "1d"`, `startup_candle_count` đủ cho lookback dài nhất |
-| Danh mục | `pairlists`: `VolumePairList` → `DelistFilter` → `AgeFilter`; backtest dùng danh sách tương đương luật point-in-time |
-| Vào / đổi tỷ trọng | `custom_stake_amount` (vị thế đầu), `adjust_trade_position` (tăng/giảm về tỷ trọng mục tiêu) |
-| Đòn bẩy | `leverage()` cố định theo chính sách, isolated |
-| Funding | candle type `funding_rate` qua `@informative` |
-| Tin nhắn | `self.dp.send_msg(...)` |
-| Theo dõi | DB dry-run + `/profit`, `/performance`, `/daily` |
-
-Strategy đặt trong `user_data/strategies/`; khi chốt tên, cập nhật luôn `run.ps1` và `docker-compose.yml`.
-Secret chỉ trong config gitignore hoặc biến môi trường `FREQTRADE__...`.
-
----
-
-## 4. Kiểm chứng trước khi tin vào tín hiệu
-
-Cổng và quy trình: [.claude/rules/quant-strategy.md](../.claude/rules/quant-strategy.md) (cổng danh mục, dải dữ liệu),
-skill `/validate-strategy` (lookahead, recursive, backtest Freqtrade). Tóm tắt:
-1. Backtester danh mục trên danh mục point-in-time, phí 0,06%/chiều + funding thực tế, so BTC mua-giữ có vol-target.
-2. Holdout chạy **một lần** sau khi người dùng duyệt (`user_data/research/thresholds.json: holdout_runs`).
-3. Port Freqtrade: `lookahead-analysis`, `recursive-analysis` sạch; lợi suất khớp backtester danh mục.
-4. Dry-run VPS ≥ 4 tuần, so với backtest cùng kỳ. Không đạt → đổi giả thuyết, không chỉnh tham số theo holdout.
-
----
-
-## 5. Cài đặt Telegram (BotFather)
-
+## 4. Cài đặt Telegram (BotFather)
 1. Mở @BotFather → `/newbot` → đặt tên → nhận **token**.
 2. Nhắn một tin bất kỳ cho bot vừa tạo.
 3. Lấy **chat_id**: mở `https://api.telegram.org/bot<TOKEN>/getUpdates`, tìm `"chat":{"id": ...}`.
 4. Điền vào config (không commit): `telegram.enabled = true`, `token`, `chat_id`.
-5. Nếu sau này thêm bạn bè vào group nhận tin: đặt `authorized_users` = chỉ ID của bạn, để người khác không gửi được lệnh điều khiển như `/stop`, `/forceexit`.
+5. Nếu đưa vào group: đặt `authorized_users` = chỉ ID của bạn, để người khác không gửi được lệnh điều khiển.
 
----
+## 5. Ánh xạ sang Freqtrade (giai đoạn 2, không sửa core)
+
+| Thiết kế | Cài đặt trong Freqtrade |
+|---|---|
+| Luật vào | `populate_indicators` gọi các hàm `mce` (features, regime, hook) → `populate_entry_trend` |
+| Khối lượng 1% rủi ro | `custom_stake_amount` theo khoảng cách SL |
+| SL / TP / thoát theo thời gian | `stoploss` / `custom_stoploss`, `custom_exit` |
+| Đòn bẩy | `leverage()` cố định theo chính sách, isolated, `liquidation_buffer` ≥ 0,05 |
+| Danh mục | `pairlists` tương đương luật point-in-time |
+| Tin nhắn | `self.dp.send_msg(...)`; theo dõi qua `/profit`, `/performance`, FreqUI |
+
+Strategy đặt trong `user_data/strategies/`; khi chốt tên, cập nhật `run.ps1` và `docker-compose.yml`. Kiểm chứng:
+skill `/validate-strategy` (lookahead, recursive, backtest). Secret chỉ trong config gitignore hoặc `FREQTRADE__...`.
 
 ## 6. Lộ trình
 
 | Bước | Việc | Ai làm |
 |---|---|---|
-| 0 | Tìm strategy đạt cổng IS (dữ liệu 2025+, danh mục point-in-time). Trạng thái chi tiết trong `user_data/research/STATE.md` | Claude |
-| 1 | Người dùng duyệt → holdout một lần | Bạn duyệt, Claude chạy |
-| 2 | Port sang Freqtrade (khung 1d, tỷ trọng mục tiêu), lookahead/recursive, đối chiếu backtester danh mục | Claude |
-| 3 | Tạo bot BotFather, thuê VPS, triển khai dry-run | Bạn (Claude hướng dẫn) |
-| 4 | Theo dõi ≥ 4 tuần, đánh giá | Cùng làm |
-| 5 | Giai đoạn 2: bot tự vào lệnh với vốn nhỏ | Quyết định sau |
-
-### 6.1 Nhận định thị trường
-Nhánh song song [market-context-engine.md](market-context-engine.md): các hook có tên, có thống kê, ghi vào forward
-journal. Nhận định **không** tự phát tín hiệu; chỉ được dùng làm bộ lọc/định cỡ sau khi qua lộ trình P1–P5 của MCE
-(event study IS → walk-forward → holdout một lần → journal ≥ 4 tuần, ≥ 300 nhận định, Brier skill > 0).
+| 0 | Tìm luật có lợi thế: chốt trước, dải phát triển một lần, kiểm định tiến. Trạng thái: `user_data/research/STATE.md` | Claude |
+| 1 | Bật Telegram thử nghiệm (nhãn rõ) | Bạn duyệt |
+| 2 | Chạy VPS 24/7 (`docker compose up -d --build recorder forward`) | Bạn (Claude hướng dẫn) |
+| 3 | Luật đạt mốc → dry-run ≥ 4 tuần, so với bản chạy lại | Cùng làm |
+| 4 | Giai đoạn 2: port Freqtrade, tự vào lệnh với vốn nhỏ | Quyết định sau |
+| — | Màn hình UI (setup, nhật ký, độ phủ dữ liệu) trên API server / FreqUI | Khi cần |

@@ -23,7 +23,8 @@ Thiết kế gốc: [docs/signal-bot-workflow.md](../../docs/signal-bot-workflow
 ## Kiểm chứng (bắt buộc trước khi merge vào `develop`)
 1. `lookahead-analysis` và `recursive-analysis` không báo lỗi.
 2. Backtest với `--fee 0.0006`, `--timeframe-detail` (nếu có dữ liệu), `--enable-protections`, có `--breakdown month`.
-3. Phát triển trên dải IS; dải holdout (OOS) chỉ chạy **một lần** khi người dùng duyệt bộ tham số cuối. Không chỉnh tham số theo kết quả OOS.
+3. Phát triển trên dải IS; dải ngoài mẫu (dữ liệu sau ngày chốt fingerprint, hoặc khối người dùng duyệt) chỉ chạy
+   **một lần** ở mốc chốt trước. Không chỉnh tham số theo kết quả ngoài mẫu. Holdout 2026-04 → 2026-10 đã dùng.
 4. Ngưỡng đạt trên OOS: ≥ 150 tín hiệu, profit factor ≥ 1.3, kỳ vọng ≥ +0.2R/tín hiệu, drawdown ≤ 15R, không cặp nào > 30% lợi nhuận.
 
 ## Dải dữ liệu

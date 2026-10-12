@@ -4,7 +4,7 @@
 > quản lý lệnh, rủi ro, futures, API, backtest, hyperopt.
 > **Mọi điểm dưới đây đã được đối chiếu trực tiếp với source** (Freqtrade **2026.9**).
 > Tham chiếu code ghi dạng `file.py::hàm` (không ghi số dòng): tìm bằng `git grep -n "def <hàm>"` hoặc LSP.
-> Liên kết: [overview.md](overview.md) · [structure.md](structure.md)
+> Liên kết: [structure.md](structure.md) · [signal-bot-workflow.md](signal-bot-workflow.md)
 
 ## Mục lục
 - [A. Khởi động](#a-khởi-động)
@@ -35,7 +35,7 @@
 ## A. Khởi động
 
 ```
-freqtrade trade --config user_data/config.json --strategy MyStrategy
+freqtrade trade --config user_data/config_futures.json --strategy <Strategy>
 ```
 
 ```

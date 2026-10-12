@@ -1,210 +1,117 @@
-# Market Context Engine (MCE): thiết kế
+# Market Context Engine (MCE): bộ máy nghiên cứu
 
-Bộ máy **nhận định thị trường**: từ nến, chỉ số và dữ liệu phái sinh, đưa ra *trạng thái + xác suất có điều kiện +
-mức vô hiệu*. Không đặt lệnh. Về sau, nhận định làm tầng ngữ cảnh/bộ lọc cho tín hiệu trong
-[signal-bot-workflow.md](signal-bot-workflow.md).
-
-Mới đọc lần đầu: xem bản giải thích dễ hiểu [huong-dan-nhan-dinh-thi-truong.md](huong-dan-nhan-dinh-thi-truong.md).
-
-Tài liệu này chỉ chứa phần generic. Hook cụ thể, ngưỡng riêng, kết quả nghiên cứu nằm trong `user_data/research/` và
-`user_data/reports/` (không commit).
+Phần nghiên cứu của bot: kiểm định một luật vào lệnh **trước** khi cho nó phát setup. Code chung ở
+`scripts/research/mce/` (package `mce`, có test), script chạy ở `scripts/research/`. Luật cụ thể, ngưỡng, kết quả nằm
+trong `user_data/research/` và `user_data/reports/` (riêng, không commit). Thiết kế bot: [signal-bot-workflow.md](signal-bot-workflow.md).
+Kiến thức mô hình: [quant-playbook.md](quant-playbook.md).
 
 ## 1. Nguyên tắc
-- Nhận định không thoát được vấn đề dữ liệu mới. Mọi phán đoán vẫn phải kiểm trên dữ liệu chưa thấy. Khác biệt là
-  đầu ra (xác suất, không phải lệnh), thước đo (độ hiệu chuẩn, không chỉ lợi nhuận) và **forward journal**: nhận định
-  được ghi *trước* khi biết kết quả, rồi chấm điểm tự động.
-- "Kinh nghiệm" = thống kê có điều kiện của từng hook, có phiên bản, có theo dõi suy giảm và quy tắc loại bỏ.
-- Giả thuyết có cơ sở (động lượng, co giãn biến động, vị thế quá đông, lead-lag) được ưu tiên hơn mẫu hình tìm ra bằng
-  cách quét dữ liệu. Mẫu hình "nhìn bằng mắt" chỉ được đưa vào khi định nghĩa được bằng thuật toán.
-- Mọi thứ trước tầng nhãn phải **causal**: giá trị tại nến t chỉ dùng nến đã đóng ≤ t. Có test tự động bảo đảm điều này.
+- **Nhân quả:** giá trị tại nến t chỉ dùng dữ liệu đã có lúc quyết định (đóng nến t). `labels.py` là nơi duy nhất
+  nhìn tương lai. Test tự động: cắt dữ liệu tương lai thì quá khứ không đổi.
+- **Danh mục point-in-time:** chọn coin theo thanh khoản tại từng thời điểm, kể cả coin đã delist. Không dùng danh sách
+  coin chọn theo hôm nay (survivorship bias).
+- **Chốt trước, chạy một lần:** giả thuyết, cơ chế, ≤ 3 tham số lấy từ tài liệu, cổng đạt; ghi fingerprint vào
+  `user_data/research/fingerprints.jsonl` rồi mới chạy. Không chỉnh theo kết quả rồi chạy lại cùng dữ liệu.
+- **Kiểm tra dương tính:** cài sẵn một lợi thế đã biết vào kho giả, quy trình phải phát hiện được. Với ~150 sự kiện,
+  ngưỡng phát hiện ≈ 0,3R; trên dữ liệu thật (sự kiện dồn theo ngày) rộng gấp đôi. Biết trước ngưỡng này để không
+  đọc nhầm "không đạt" thành "không có gì".
 
-## 2. Kiến trúc
-
+## 2. Luồng
 ```
-dữ liệu feather (futures, mark, index, premiumIndex, funding, 4h, BTC) + kho point-in-time (nến, funding, OI,
-long/short) + bộ ghi thời gian thực (thanh lý, giá mua/bán, funding dự kiến, sổ lệnh, quyền chọn)
-      │
- features ──► regime ──► hooks ──► event study (nghiên cứu, ngoài engine)
-      │                    │
-      └────────────────────┴──► assessment (xác suất + kịch bản + mức vô hiệu) ──► journal ──► chấm điểm, drift
+kho point-in-time (archive, universe, pit, live) ──► features ──► regime ──► hook / luật (chốt trước)
+                                                                                    │
+bộ ghi thời gian thực (recorder): dữ liệu sàn không lưu lịch sử         event study IS (một lần)
+                                                                                    │
+                                  kiểm định tiến: forward (setup đầy đủ) ──► journal (ghi trước, chấm sau)
+                                                                                    │ đạt mốc
+                                                                      Telegram (nhãn thử nghiệm → thật)
 ```
-
-Code nằm ở `scripts/research/mce/` (package `mce`):
 
 | Module | Vai trò |
 |---|---|
-| `data.py` | Nạp feather qua `freqtrade.data.history`, ghép 4h bằng `merge_informative_pair`, ghép funding theo thời điểm công bố |
-| `features.py` | ATR, ADX, EMA slope theo ATR, percentile/z-score cuốn chiếu, cấu trúc nến, breakout, hạng cắt ngang trung bình của nhiều tín hiệu |
-| `regime.py` | Regime theo luật minh bạch + kiểm tra regime có tách biệt kết quả tương lai không |
-| `hooks.py` | `Hook` (dataclass) + `HookRegistry` + fingerprint |
-| `labels.py` | **Module duy nhất được nhìn tương lai**: lợi suất tương lai theo R, triple-barrier, MFE/MAE, lợi suất mua-giữ N ngày (coin delist thoát ở close cuối), tổng funding trong cửa sổ giữ, lợi suất vào trễ, funding giữa hai thời điểm |
-| `stats.py` | Block bootstrap, Benjamini–Hochberg, Brier, log loss, reliability, Brier skill score, hiệu hai trung bình (bootstrap tuần chung) |
-| `event_study.py` | Chạy hook × cặp × horizon, so baseline cùng regime, áp go/no-go; bỏ dòng ngoài danh mục (cột `active`); báo kết quả vào trễ 1 nến |
-| `pit.py` | Khung point-in-time từ kho `pit/`: nến, regime, OI chụp **trước** thời điểm quyết định (kho lưu trữ, bổ sung bằng OI từ API cho những ngày kho chưa công bố), cờ thuộc top-N; kho giả để chạy thử |
-| `walkforward.py` | Chia walk-forward cuốn chiếu có purge + embargo |
-| `journal.py` | Nhật ký setup sqlite chỉ ghi thêm (trigger chặn sửa/xóa): ghi setup trước khi biết kết quả, chấm một lần (SL/TP/thời gian hoặc thoát theo luật), đối chiếu với bản chạy lại (mục 7) |
-| `live.py` | Cập nhật kho cho kiểm định tiến: OI từ API `openInterestHist` (API ghi nhãn trễ 5 phút so với kho: ảnh chụp kho 15:50 = dòng API 15:55; đổi nhãn rồi mới dùng), thử lại khi lỗi mạng, giá mua/bán và trượt giá theo sổ lệnh lúc quyết định |
-| `forward.py` | Luật kiểm định tiến: setup đầy đủ (rủi ro 1%, trần đòn bẩy, chi phí theo R, luật bỏ setup), sự kiện hook trên khung point-in-time, ensemble Donchian hai chiều, kiểm xu hướng liều–đáp ứng |
-| `recorder.py` | Ghi dữ liệu sàn không lưu lịch sử (mục 9): ghi nối thêm JSONL theo giờ, gộp parquet theo ngày, log khoảng trống, báo cáo độ phủ |
-| `archive.py` | Tải nến (1d, 4h) + funding cho **mọi** perp USDT-M từng niêm yết, kể cả đã delist (liệt kê từ kho data.binance.vision), và lịch sử OI / tỷ lệ long-short từ file `metrics` theo ngày của kho (API chỉ giữ 30 ngày) |
-| `model.py` | Logistic regression L2 (numpy/scipy), walk-forward trên panel nhiều coin (purge + embargo theo mốc thời gian chung) |
-| `setups.py` | Kỳ vọng R sau phí, chọn setup (1 setup mở/coin, trần số setup đồng thời), thống kê theo R |
-| `universe.py` | Danh sách cố định `DEFAULT_PAIRS`; danh mục point-in-time (top-N theo trung vị quote volume, chỉ dùng dữ liệu đến ngày đó) |
-| `portfolio.py` | Backtester danh mục theo trọng số mục tiêu khung ngày, phí, funding, Deflated Sharpe, bootstrap khối Sharpe; rổ long-short theo phân vị (trung lập đô la hoặc trung lập beta BTC), beta cuốn chiếu, các lớp chồng giữ N ngày, tách beta/alpha của chuỗi lợi suất |
+| `archive.py` | Tải nến (1d, 4h), funding cho **mọi** perp USDT-M từng niêm yết (kể cả đã delist) và OI / long-short từ file `metrics` theo ngày của kho `data.binance.vision` |
+| `universe.py` | Lọc coin crypto (bỏ stablecoin, TradFi, index); danh mục top-N point-in-time theo trung vị quote volume |
+| `pit.py` | Khung point-in-time cho mỗi coin: nến, chỉ báo, regime, OI chụp **trước** thời điểm quyết định, cờ thuộc danh mục; kho giả để chạy thử |
+| `live.py` | Cập nhật kho cho kiểm định tiến: OI từ API (API ghi nhãn trễ 5 phút so với kho: ảnh chụp kho 15:50 = dòng API 15:55), thử lại khi lỗi mạng, giá mua/bán và trượt giá theo sổ lệnh |
+| `features.py`, `regime.py` | ATR, ADX, EMA slope, z-score, percentile; regime theo luật (xu hướng EMA50 + ADX, biến động theo percentile ATR%) |
+| `hooks.py` | `Hook` (luật có tên, phiên bản, ≤ 3 tham số) + `HookRegistry` + fingerprint |
+| `labels.py` | Lợi suất tương lai theo R, triple barrier, funding giữa hai thời điểm |
+| `stats.py` | Bootstrap theo cụm tuần, Benjamini–Hochberg, phí quy ra R |
+| `event_study.py` | Chạy hook × coin × horizon, so nền cùng coin cùng regime, cổng go/no-go, vào trễ 1 nến |
+| `forward.py` | Setup đầy đủ (rủi ro 1%, trần đòn bẩy, chi phí theo R, luật bỏ setup), sự kiện hook, ensemble Donchian hai chiều, kiểm xu hướng liều–đáp ứng |
+| `journal.py` | Nhật ký setup sqlite chỉ ghi thêm (trigger chặn sửa/xóa), chấm một lần, đối chiếu live với bản chạy lại |
+| `portfolio.py` | Backtester danh mục tỷ trọng mục tiêu khung ngày (phí, funding, vol-target, bootstrap khối, Deflated Sharpe) |
+| `recorder.py` | Bộ ghi dữ liệu không có lịch sử (mục 3) + báo cáo độ phủ |
 
-CLI: `scripts/research/run_event_study.py`, `scripts/research/download_pit_universe.py` (dữ liệu cho danh mục
-point-in-time, ghi vào `user_data/research/pit/`), `scripts/research/record_market.py` (bộ ghi, mục 9).
+Script: `download_pit_universe.py` (kho point-in-time), `record_market.py` + `schedule_recorder.ps1` (bộ ghi),
+`recorder_coverage.py` (độ phủ), `run_forward.py` + `schedule_forward.ps1` (runner kiểm định tiến).
 
-### Quy ước căn thời gian (row t = nến 1h mở lúc t, quyết định lúc đóng t+1h)
-| Nguồn | Cách ghép |
-|---|---|
-| mark / index / premiumIndex 1h | cùng `date` (đóng cùng lúc với nến t) |
-| nến 4h | `merge_informative_pair`: chỉ thấy nến 4h đã đóng |
-| funding_rate (in mỗi 8h tại thời điểm thanh toán T) | thấy được khi T ≤ t + 1h |
-| BTC 1h | cùng `date` |
-| OI / long-short / taker (kho `metrics`, ảnh chụp 5 phút) | chỉ dùng ảnh chụp **trước** thời điểm quyết định |
+## 3. Dữ liệu
+**Kho point-in-time** `user_data/research/pit/` (`download_pit_universe.py`, cập nhật hằng ngày bởi runner): nến ngày
+mọi coin ứng viên; nến 4h, funding, OI (ảnh chụp mỗi giờ phút :50) cho coin từng vào top-25, từ 100 ngày trước lần đầu.
+Từ 2024-01 (2024 chỉ để làm nóng chỉ báo; đánh giá từ 2025).
 
-## 3. Interface hook
+**Kho `data.binance.vision`** có lịch sử (tải khi cần): nến mọi khung (cả mark, index, premium), funding, lệnh khớp,
+OI + long/short + taker mỗi 5 phút (`metrics`), độ dày sổ lệnh ±0,2–5% mỗi 30 giây (`bookDepth`).
 
-```python
-Hook(
-    name="...", version=1,
-    hypothesis="một câu giả thuyết kinh tế",
-    condition=fn,                # (df, params) -> Series {-1, 0, +1}: hướng kỳ vọng
-    params={...},                # tối đa 3 tham số, cố định trước khi chạy
-    horizon=12,                  # horizon chính (số nến), dùng cho cổng và cooldown
-    timeframes=("1h", "4h"), features=(...),
-    invalidation=fn,             # khoảng cách giá tính từ entry làm nhận định vô hiệu
-    status="candidate",          # candidate | active | retired
-)
-```
-- Id = `name@vN`. **Đổi logic hoặc tham số = phiên bản mới**; thống kê cũ giữ theo id cũ.
-- `fingerprint()` = sha256 của mã nguồn hàm + params + horizon. `HookRegistry.fingerprint()` gộp toàn bộ, ghi lại
-  trước khi chạy holdout.
-- `condition` chỉ dùng cột của nến đã đóng; không `shift(-n)`, không thống kê toàn chuỗi.
-
-## 4. Event study (đo "kinh nghiệm")
-1. Kích hoạt: hàng có `signal != 0` trong dải nghiên cứu; bỏ kích hoạt lặp trong `cooldown` nến (mặc định = horizon).
-2. Nhãn (vào lệnh ở close[t]): lợi suất tương lai 1/4/12/24 nến theo **R = biến động giá / ATR14[t]**;
-   triple-barrier (TP k·ATR, SL m·ATR, giới hạn = horizon; cùng nến chạm cả hai → tính SL); MFE/MAE.
-   Dữ liệu bị cắt tại cuối dải nên nhãn không bao giờ đọc sang dải sau.
-3. **Lift** = lợi suất theo hướng hook − trung bình lợi suất của cùng cặp, cùng regime, trong cùng dải.
-4. Suy diễn: block bootstrap theo **tuần lịch** (gộp mọi cặp trong cùng tuần) → giữ tự tương quan, nhãn chồng lấp và
-   đồng biến giữa các cặp. p hai phía; Benjamini–Hochberg trên toàn bộ hook × horizon.
-5. Ổn định: tỉ lệ năm và tỉ lệ cặp (≥ 10 sự kiện) có lift cùng dấu với tổng.
-6. Sau phí: trừ phí khứ hồi quy ra R tại giá vào.
-
-### Cổng go/no-go cho hook (giá trị khởi điểm, chỉnh trong `user_data/research/`)
-Ở horizon chính: ≥ 200 sự kiện IS; lift có ý nghĩa sau BH; cùng dấu ≥ 2/3 số năm và ≥ 60% số cặp; lợi suất trung bình
-sau phí 0,12% khứ hồi > 0. Đạt → `active` (vẫn phải qua walk-forward và forward journal).
-
-## 5. Regime
-- Luật minh bạch: trend = độ dốc EMA50 (theo ATR, 10 nến) + ADX; vol = percentile cuốn chiếu 30 ngày của ATR%;
-  shock = nến vừa đóng > 3 ATR trước đó. Có bản 1h, 4h và của BTC.
-- Kiểm tra: regime có tách biệt |lợi suất| và lợi suất tương lai không (Kruskal–Wallis + cỡ hiệu ứng ε²; p lạc quan
-  vì nhãn chồng lấp nên đọc cỡ hiệu ứng trước).
-- Chỉ thử mô hình thống kê (HMM 2–3 trạng thái, tự viết bằng numpy/scipy) khi luật không đủ. **Chỉ lọc tiến**
-  (forward filtering); không Viterbi/smoothing trên cả chuỗi.
-
-## 6. Assessment (tổng hợp nhận định)
-Đầu ra cho mỗi cặp mỗi nến: hướng, `prob` (xác suất đi đúng hướng sau horizon), kịch bản (hook nào kích hoạt, regime),
-mức vô hiệu.
-1. Bước 1: đếm có trọng số hook `active` theo lift; `prob` = hit rate có điều kiện (co về base rate theo số mẫu).
-2. Bước 2: logistic đơn giản trên các cờ hook + regime (scipy, điều chuẩn L2), fit trên walk-forward train.
-3. Bước 3 (sau): cập nhật Bayes / meta-labeling quyết định có tin hook hay không.
-- Đo: Brier, log loss, reliability (lệch ≤ 5 điểm % mỗi bin ≥ 30 mẫu), **Brier skill score > 0 so với base rate**
-  (base rate lấy từ dữ liệu trước thời điểm dự báo).
-
-## 7. Kiểm chứng trên dữ liệu mới
-- Walk-forward cuốn chiếu (`purged_walk_forward`): purge các mẫu train có cửa sổ nhãn chạm vào test, cộng embargo.
-- **Holdout cuối chạy đúng một lần**, sau khi ghi `HookRegistry.fingerprint()` và tham số assessment.
-- **Kiểm định tiến** (luật và code chốt trước, dữ liệu mới chấm):
-  - Nguồn sự thật để chấm là **chạy lại bằng code đã đóng băng trên kho lưu trữ** (nến, funding, OI đều có lịch sử),
-    nên máy tắt/ngủ không làm mất mẫu. Luật nằm trong script riêng ở `user_data/research/`; fingerprint (luật + mọi
-    module `mce` dùng tới) ghi vào `fingerprints.jsonl` trước setup đầu tiên.
-  - Runner 24/7 `scripts/research/run_forward.py` (task Windows `schedule_forward.ps1`, service docker `forward`): mỗi
-    4h đóng nến + 90 giây cập nhật kho (nến, OI API, funding), ghi setup mới vào `user_data/research/forward/
-    journal.sqlite` **trước** khi biết kết quả, chấm setup đã đóng, đối chiếu từng setup với bản chạy lại (lệch = lỗi,
-    ghi `reconcile_issues.csv`). 00:00 UTC: setup khung ngày; 01:30 UTC: đồng bộ kho đầy đủ. Lỡ nến khi máy ngủ → ghi
-    bù, đánh dấu `live_late` (không có giá mua/bán lúc quyết định). Fingerprint khác bản đăng ký → không ghi setup.
-  - Bảng `setups`: chiến lược, fingerprint, nguồn, cặp, nến quyết định, chiều, giá vào, SL, TP, số nến tối đa, khối
-    lượng, notional, đòn bẩy tối đa, chi phí theo R, trạng thái (`setup` / `skipped_cost`), giá mua/bán và trượt giá
-    lúc ghi, lý do. Bảng `outcomes`: lý do thoát, giá thoát, R gộp, phí, funding, R ròng.
-  - Tin nhắn sản phẩm (định dạng Telegram, nhãn "THỬ NGHIỆM - chưa kiểm định") ghi ra `forward/messages.log`; chỉ gửi
-    Telegram khi người dùng duyệt.
-- Drift: hit rate và Brier skill cuốn chiếu 60 ngày theo hook. **Retire** khi skill < 0 có ý nghĩa (bootstrap).
-
-## 8. Tích hợp Freqtrade (không sửa core)
-Chọn **(b) nghiên cứu ngoài engine**: script đọc feather, chạy event study/walk-forward; engine chỉ dùng hook đã duyệt.
-- Strategy tương lai gọi lại chính các hàm `mce.features/regime/hooks` trong `populate_indicators` để tạo cột ngữ cảnh
-  (một nguồn code cho cả nghiên cứu và bot → không lệch công thức).
-- Ghi journal (và về sau gửi Telegram qua `dp.send_msg`) chỉ khi có nến mới và `runmode` là `live`/`dry_run`.
-- Lý do không chọn (a) cho nghiên cứu: backtest engine không phục vụ event study / bootstrap, và tính nặng trong vòng
-  lặp bot làm chậm phát tín hiệu.
-
-## 9. Nguồn dữ liệu: kho lưu trữ và bộ ghi
-**Có lịch sử trên kho công khai `data.binance.vision`** (tải khi cần, `mce.archive` / `download_pit_universe.py`):
-nến mọi khung (kể cả mark, index, premium), funding, lệnh khớp (`trades`, `aggTrades`), OI + tỷ lệ long/short +
-taker mỗi 5 phút (`metrics`, từ 2020), độ dày sổ lệnh trong ±0,2/1/2/3/4/5% quanh giá mỗi 30 giây (`bookDepth`, từ
-2023). API `futures/data/*` chỉ giữ ~30 ngày nhưng kho có cùng số liệu (đã đối chiếu) nên không cần collector riêng.
-
-**Không có lịch sử ở đâu** → bộ ghi `scripts/research/record_market.py` ghi từ khi bật (`user_data/research/live/`):
+**Không có lịch sử ở đâu** → bộ ghi `record_market.py` ghi từ khi bật vào `user_data/research/live/`:
 
 | Luồng | Nguồn | Tần suất |
 |---|---|---|
-| `liquidations` | WebSocket `wss://fstream.binance.com/market/ws/!forceOrder@arr` (sàn chỉ đẩy ≤ 1 lệnh/giây/coin) | mọi tin |
+| `liquidations` | WebSocket `!forceOrder@arr` (sàn chỉ đẩy ≤ 1 lệnh/giây/coin) | mọi tin |
 | `book_ticker` | `/fapi/v1/ticker/bookTicker`, top-100 theo quote volume 24h | 1 phút |
-| `premium_index` | `/fapi/v1/premiumIndex`: mark, index, funding dự kiến, giờ funding kế, mọi coin | 5 phút |
+| `premium_index` | `/fapi/v1/premiumIndex`: mark, index, funding dự kiến, mọi coin | 5 phút |
 | `depth` | `/fapi/v1/depth` 100 mức mỗi phía, top-20 | 5 phút |
-| `options_mark` | `/eapi/v1/mark`: mark, IV mua/bán/mark, delta, gamma, theta, vega | 15 phút |
+| `options_mark` | `/eapi/v1/mark`: IV, delta, gamma, theta, vega | 15 phút |
 | `options_ticker`, `options_oi` | `/eapi/v1/ticker`, `/eapi/v1/openInterest` | 1 giờ |
-| `meta` | exchangeInfo (futures, options), fundingInfo, ticker 24h (JSON nén) | hằng ngày |
+| `meta` | exchangeInfo (futures, options), fundingInfo, ticker 24h | hằng ngày |
 
-- Mỗi luồng chụp một lần khi khởi động rồi theo lưới đồng hồ. Ghi nối thêm `<luồng>/<ngày>/part-<giờ>.jsonl` (UTC),
-  ngày đã qua được gộp thành `<luồng>/<ngày>.parquet`. Mất kết nối hoặc poll lỗi được ghi vào `live/_gaps.jsonl`.
-- Trên máy Windows: `scripts/research/schedule_recorder.ps1` (Task Scheduler, chạy ẩn, tự khởi động lại). Máy tắt/ngủ
-  thì có khoảng trống. Trên VPS: `docker compose up -d --build recorder`; chép dữ liệu về máy nghiên cứu bằng
-  `scp -r <vps>:<repo>/user_data/research/live user_data/research/` (hoặc rsync). Chỉ chạy một bộ ghi mỗi máy (khóa
-  `live/.recorder.lock`).
-- Dung lượng khoảng 40 MB/ngày. Các số liệu vị thế được giả định yếu khi đứng riêng; chỉ kiểm định kết hợp với giá.
-- Lịch poll ngủ từng bước ≤ 30 giây theo đồng hồ thực: đồng hồ monotonic của Windows dừng khi máy ngủ, một lần ngủ dài
-  sẽ làm việc theo giờ (quyền chọn, dọn dẹp, gộp parquet) trễ thêm đúng thời gian máy ngủ.
-- Độ phủ: `scripts/research/recorder_coverage.py` (mỗi luồng × ngày: phần ngày đã ghi, giờ có dữ liệu, phút trống,
-  dung lượng, ngày cũ chưa gộp parquet). Luồng thanh lý là luồng sự kiện: độ phủ = 1 − phút trống / ngày (trước dòng
-  đầu tiên coi như trống).
+- Ghi nối thêm `<luồng>/<ngày>/part-<giờ>.jsonl` (UTC); ngày đã qua gộp thành `<luồng>/<ngày>.parquet`. Mất kết nối,
+  poll lỗi, máy ngủ → ghi vào `live/_gaps.jsonl`. Khoảng 40 MB/ngày. Một bộ ghi mỗi máy (khóa `live/.recorder.lock`).
+- Lịch poll ngủ từng bước ≤ 30 giây theo đồng hồ thực: đồng hồ monotonic của Windows dừng khi máy ngủ.
+- Độ phủ: `recorder_coverage.py` (mỗi luồng × ngày: phần ngày đã ghi, giờ có dữ liệu, phút trống, dung lượng, ngày
+  chưa gộp). Luồng thanh lý: độ phủ = 1 − phút trống / ngày.
 
-**Chạy trên VPS** (khuyến nghị cho dữ liệu liên tục; người dùng tự làm):
-1. VPS Linux có Docker; `git clone` repo, chép `user_data/research/pit/`, `forward_v1.py`, `liquidation_events_v1.py`,
-   `thresholds.json`, `fingerprints.jsonl` lên cùng chỗ (thư mục riêng, không có trong git).
-2. `docker compose up -d --build recorder forward`; xem log: `docker compose logs -f --tail 50 recorder forward`.
-3. Chỉ một bộ ghi và một runner cho mỗi thư mục dữ liệu: tắt task Windows tương ứng
-   (`schedule_recorder.ps1 -Remove`, `schedule_forward.ps1 -Remove`) khi VPS đã chạy.
-4. Chép về máy nghiên cứu: `rsync -av <vps>:<repo>/user_data/research/live/ user_data/research/live/` (và
-   `forward/`); Windows không có rsync thì `scp -r`.
+**Chạy trên VPS** (dữ liệu liên tục; người dùng tự làm): `git clone` repo, chép `user_data/research/` (kho `pit/`,
+luật, `thresholds.json`, `fingerprints.jsonl`) lên; `docker compose up -d --build recorder forward`; log:
+`docker compose logs -f --tail 50 recorder forward`. Chỉ một bộ ghi và một runner cho mỗi thư mục dữ liệu (gỡ task
+Windows tương ứng bằng `-Remove`). Chép về: `rsync -av <vps>:<repo>/user_data/research/live/ user_data/research/live/`.
+**Nếu chạy trên laptop:** tắt chế độ ngủ khi cắm sạc (`powercfg /change standby-timeout-ac 0`,
+`powercfg /change hibernate-timeout-ac 0`, đóng nắp = Do nothing).
 
-**Nếu vẫn chạy trên laptop**: tắt chế độ ngủ khi cắm sạc (Settings → System → Power → Sleep: Never; hoặc
-`powercfg /change standby-timeout-ac 0` và `powercfg /change hibernate-timeout-ac 0`), đặt "When I close the lid" =
-Do nothing khi cắm sạc. Máy vẫn tắt khi mất điện/cập nhật Windows → khoảng trống vẫn được ghi trong `_gaps.jsonl`.
+## 4. Event study (đo một luật)
+1. Kích hoạt: nến có `signal != 0`, coin thuộc danh mục tại thời điểm đó; bỏ kích hoạt lặp trong `cooldown` nến.
+2. Nhãn (vào ở close[t]): lợi suất tương lai theo **R = biến động giá / ATR14[t]**; triple barrier (cùng nến chạm cả
+   hai → tính SL). Dữ liệu cắt tại cuối dải nên nhãn không đọc sang dải sau.
+3. **Lift** = lợi suất theo hướng luật − trung bình cùng coin, cùng regime, cùng dải (tách khỏi beta thị trường).
+4. Suy diễn: bootstrap theo **tuần lịch** (giữ tự tương quan và đồng biến giữa các coin); Benjamini–Hochberg trên mọi
+   hook × horizon. Ổn định: cùng dấu theo năm và theo coin. Sau phí 0,12% khứ hồi và funding thực tế.
+5. Cổng (`thresholds.json` → `hook_gate`): ≥ 200 sự kiện; lift có ý nghĩa sau BH; cùng dấu ≥ 2/3 năm và ≥ 60% coin
+   (≥ 10 sự kiện); ròng sau phí + funding > 0.
+6. Trước khi chạy (`--check`, không nhìn kết quả): độ phủ dữ liệu, đếm sự kiện, nhân quả ở 3 mốc cắt, placebo (nến
+   ngẫu nhiên → lift ≈ 0), đối chiếu tay một sự kiện với nến Binance.
 
-## 10. Rủi ro thống kê → biện pháp
+## 5. Kiểm định tiến
+- Nguồn sự thật để chấm: **chạy lại bằng code đã đóng băng** trên kho lưu trữ (nến, funding, OI đều có lịch sử), nên
+  máy tắt/ngủ không làm mất mẫu. Fingerprint = luật + mọi module `mce` dùng tới; sửa bất kỳ file nào trong đó phải
+  chứng minh kết quả không đổi rồi đăng ký lại.
+- Runner `run_forward.py` (24/7): mỗi 4h đóng nến + 90 giây cập nhật kho (nến, OI API, funding), ghi setup mới vào
+  `user_data/research/forward/journal.sqlite` **trước** khi biết kết quả, chấm setup đã đóng, đối chiếu từng setup với
+  bản chạy lại (lệch → `reconcile_issues.csv`). 00:00 UTC: setup khung ngày; 01:30 UTC: đồng bộ kho đầy đủ. Lỡ nến
+  khi máy ngủ → ghi bù `live_late`. Fingerprint khác bản đăng ký → không ghi setup. `--status`: tóm tắt nhật ký.
+- Bảng `setups`: chiến lược, fingerprint, nguồn, cặp, nến quyết định, chiều, giá vào, SL, TP, số nến tối đa, khối
+  lượng, notional, đòn bẩy tối đa, chi phí theo R, trạng thái (`setup` / `skipped_cost`), giá mua/bán và trượt giá lúc
+  ghi, lý do. Bảng `outcomes`: lý do thoát, giá thoát, R gộp, phí, funding, R ròng.
+- Tin nhắn sản phẩm ghi ra `forward/messages.log` (nhãn "THỬ NGHIỆM - chưa kiểm định"); chỉ gửi Telegram khi người
+  dùng duyệt. Nhật ký và độ phủ bộ ghi là nguồn dữ liệu cho màn hình UI sau này.
+
+## 6. Rủi ro thống kê → biện pháp
 | Rủi ro | Biện pháp |
 |---|---|
-| Data snooping | Hook từ lý thuyết, ≤ 3 tham số cố định trước; BH trên mọi phép thử; ghi fingerprint; không hyperopt hàng loạt |
-| Survivorship | Danh sách cặp cố định, niêm yết trước dải nghiên cứu; báo cáo ghi rõ bias còn lại |
-| Không dừng | Chuẩn hóa theo ATR, percentile cuốn chiếu; kiểm tra ổn định theo năm/regime; walk-forward |
-| Nhãn chồng lấp | Cooldown, block bootstrap theo tuần, purge + embargo |
-| Look-ahead | Test causal tự động (cắt dữ liệu tại t, so kết quả); `labels.py` là nơi duy nhất nhìn tương lai |
-| Phí / trượt giá | Trừ phí khứ hồi theo R; triple-barrier chọn SL khi cùng nến |
-| Đứt gãy regime | Thống kê theo regime; drift cuốn chiếu; quy tắc retire |
-
-## 11. Lộ trình và go/no-go
-| Phase | Việc | Go khi |
-|---|---|---|
-| P1 | Kho dữ liệu point-in-time + bộ ghi chạy liên tục | Đủ dữ liệu danh mục; khoảng trống của bộ ghi được ghi lại |
-| P2 | Event study IS cho bộ hook v1, v2… | ≥ 1 hook qua cổng mục 4 |
-| P3 | Assessment + walk-forward OOS trong IS | BSS > 0, reliability lệch ≤ 5 điểm % |
-| P4 | Holdout một lần (đã ghi fingerprint) | Giữ BSS > 0 và lift cùng dấu |
-| P5 | Forward journal dry-run | ≥ 4 tuần và ≥ 300 nhận định, BSS > 0 |
-| P6 | Dùng làm bộ lọc tín hiệu / Telegram | Bộ lọc cải thiện kỳ vọng tín hiệu trên OOS |
-
-No-go ở bất kỳ phase nào → quay lại giả thuyết (phiên bản hook mới), không nới cổng theo kết quả.
+| Data snooping | Luật từ lý thuyết/tài liệu, ≤ 3 tham số chốt trước; BH; fingerprint; đếm mọi lần thử (Deflated Sharpe) |
+| Survivorship | Danh mục point-in-time, kể cả coin đã delist |
+| Không dừng | Chuẩn hóa theo ATR, percentile cuốn chiếu; kiểm tra ổn định theo năm/coin/quý |
+| Nhãn chồng lấp | Cooldown, bootstrap theo tuần |
+| Look-ahead | Test nhân quả tự động; `labels.py` là nơi duy nhất nhìn tương lai; OI chụp trước thời điểm quyết định |
+| Phí / trượt giá | Phí khứ hồi theo R; SL trước khi cùng nến chạm cả hai; luật bỏ setup khi chi phí > 0,20R; spread thật từ bộ ghi |
+| Mẫu nhỏ | Báo CI, ngưỡng phát hiện; kết luận chỉ ở mốc chốt trước |

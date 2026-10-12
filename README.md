@@ -10,7 +10,8 @@ Engine dựa trên [Freqtrade](https://github.com/freqtrade/freqtrade) 2026.9 (G
 | File | Nội dung |
 |---|---|
 | [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md) | Thiết kế bot: quyết định đã chốt, workflow, tin nhắn Telegram, ánh xạ Freqtrade, lộ trình |
-| [docs/overview.md](docs/overview.md) | Tổng quan engine và các chế độ chạy |
+| [docs/market-context-engine.md](docs/market-context-engine.md) | Bộ máy nghiên cứu: kho dữ liệu, kiểm định luật, kiểm định tiến, bộ ghi |
+| [docs/quant-playbook.md](docs/quant-playbook.md) | Các họ mô hình có bằng chứng và bài học đã kiểm |
 | [docs/lifecycle.md](docs/lifecycle.md) | Logic chạy chi tiết (đã đối chiếu với code) |
 | [docs/structure.md](docs/structure.md) | Bản đồ source code |
 | [docs/trim-log.md](docs/trim-log.md) | Nhật ký các phần đã cắt khỏi Freqtrade gốc |
@@ -41,7 +42,21 @@ uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt -e .   
 .venv\Scripts\freqtrade.exe webserver --config user_data\config_futures.json
 ```
 
-Telegram: tạo bot bằng @BotFather, điền `token` và `chat_id` vào config (xem mục 5 trong [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md)).
+Telegram: tạo bot bằng @BotFather, điền `token` và `chat_id` vào config (xem mục 4 trong [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md)).
+
+## Nghiên cứu và kiểm định tiến
+
+```powershell
+# Kho dữ liệu point-in-time (nến, funding, OI của mọi perp, kể cả đã delist)
+.venv\Scripts\python.exe scripts\research\download_pit_universe.py
+# Runner kiểm định tiến và bộ ghi dữ liệu sàn chạy 24/7 (task Windows); VPS: docker compose up -d --build recorder forward
+powershell -ExecutionPolicy Bypass -File scripts\research\schedule_forward.ps1
+powershell -ExecutionPolicy Bypass -File scripts\research\schedule_recorder.ps1
+# Tình trạng: nhật ký setup, độ phủ bộ ghi
+.venv\Scripts\python.exe scripts\research\run_forward.py --status
+.venv\Scripts\python.exe scripts\research\recorder_coverage.py
+```
+Chi tiết: [docs/market-context-engine.md](docs/market-context-engine.md).
 
 ## Kiểm tra chất lượng code
 

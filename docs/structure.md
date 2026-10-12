@@ -2,7 +2,7 @@
 
 > Bản đồ source `freqtrade/`: mỗi thư mục và file quan trọng kèm vai trò, các hàm chính,
 > và luồng nào đi qua đó. **Đã đối chiếu với code** (Freqtrade **2026.9**).
-> Logic chạy chi tiết: [lifecycle.md](lifecycle.md) · Tổng quan: [overview.md](overview.md)
+> Logic chạy chi tiết: [lifecycle.md](lifecycle.md) · Thiết kế bot: [signal-bot-workflow.md](signal-bot-workflow.md)
 > Tài liệu cố ý **không ghi số dòng** (lệch sau mỗi lần sửa code): tìm hàm bằng `git grep -n "def <tên>"` hoặc LSP.
 
 ## Cây thư mục gốc
@@ -14,10 +14,12 @@ freqtrade/  (repo)
 ├── tests/              # Bộ test pytest, cấu trúc giống freqtrade/ (commands, exchange, freqtradebot,
 │                       #   optimize, persistence, plugins, rpc, strategy, tools, ...) + testdata/
 │                       #   tools/: test cho script dự án (hook ruff, check_imports, format_code...)
-├── docs/               # Tài liệu tiếng Việt (overview, structure, lifecycle, signal-bot-workflow, trim-log)
+├── docs/               # Tài liệu tiếng Việt (signal-bot-workflow, market-context-engine, quant-playbook,
+│                       #   lifecycle, structure, trim-log)
 ├── scripts/            # gate.py (mọi kiểm tra trước commit, output gọn), format_code.py, check_encoding.py,
 │                       #   binance_update_lev_tiers.py (bảng đòn bẩy)
-│                       #   research/: Market Context Engine (package mce, event study, bộ ghi dữ liệu)
+│                       #   research/: bộ máy nghiên cứu (package mce: kho point-in-time, event study,
+│                       #   kiểm định tiến, bộ ghi dữ liệu; runner run_forward.py)
 │                       #   — xem docs/market-context-engine.md; test ở tests/research/
 ├── .gitattributes, .editorconfig, .pre-commit-config.yaml   # Chuẩn file text + git hook
 ├── Dockerfile, docker-compose.yml   # Build image từ repo, chạy futures dry-run (triển khai VPS)
@@ -310,22 +312,18 @@ không dùng WebSocket cho futures, bắt buộc One-way mode khi chạy live.
 
 ```
 user_data/
-├── config.json              # Config chính: Binance spot, dry-run, 5m, API server 127.0.0.1:8080
-├── config_futures.json      # (nháp) config futures kế thừa config.json qua add_config_files — chưa dùng
-├── strategies/
-│   └── MyStrategy.py        # Bản sao sample strategy (RSI + TEMA + Bollinger), chưa backtest
-├── data/binance/            # OHLCV đã tải: BTC/USDT, ETH/USDT (5m, 1h) — spot
-├── research/                # Riêng tư: STATE.md, thresholds.json, fingerprints.jsonl, script nghiên cứu,
-│                            #   pit/ (nến, funding, OI/long-short point-in-time từ 2024), live/ (bộ ghi thời gian thực)
-├── reports/                 # Báo cáo nghiên cứu (không commit)
-├── tradesv3.dryrun.sqlite   # DB dry-run
-├── backtest_results/        # Kết quả backtest (.zip)
-├── hyperopt_results/        # Kết quả hyperopt (.fthypt)
-├── hyperopts/               # Hàm loss tùy chỉnh
-├── logs/
+├── config.json              # Config gốc: Binance, dry-run, API server 127.0.0.1:8080 (FreqUI), Telegram — có secret
+├── config_futures.json      # Config futures, kế thừa config.json qua add_config_files
+├── strategies/              # Strategy Freqtrade (giai đoạn 2; hiện trống)
+├── data/                    # OHLCV Freqtrade tải bằng download-data khi có strategy (hiện trống)
+├── research/                # Riêng tư: STATE.md, NEXT_PROMPT.md, thresholds.json, fingerprints.jsonl, luật đang
+│                            #   kiểm định (forward_v1.py, liquidation_events_v1.py), pit/ (kho point-in-time),
+│                            #   live/ (bộ ghi), forward/ (nhật ký setup, tin nhắn mẫu)
+├── reports/                 # Báo cáo nghiên cứu
+├── backtest_results/, hyperopts/   # Thư mục chuẩn của Freqtrade (trống)
+├── logs/                    # recorder.log, forward.log (bot: freqtrade.log)
 └── CLAUDE.md
 ```
-> Có thể còn dữ liệu cũ ngoài git (vd `data/hyperliquid/`) từ trước khi chỉ giữ Binance — không ảnh hưởng bot.
 > Toàn bộ `user_data/*` nằm trong `.gitignore` (chỉ giữ `.gitkeep`) → strategy/config không vào git trừ khi thêm ngoại lệ.
 
 ## Công cụ chất lượng code

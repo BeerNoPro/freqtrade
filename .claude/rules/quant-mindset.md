@@ -8,7 +8,8 @@ bước tiếp theo): `user_data/research/STATE.md`. Kiến thức mô hình: [d
   không phải lỗi. Mục tiêu là **loại ý tưởng xấu nhanh và rẻ**, không phải làm backtest đẹp.
 - Bằng chứng tốt nhất trong crypto: **trend-following khung ngày/tuần + định cỡ theo biến động**. Dự báo biến động dễ
   hơn dự báo hướng. Chỉ báo là **thước đo trạng thái**, không phải tín hiệu tự thân.
-- Release chỉ khi strategy qua IS → holdout **một lần** → dry-run ≥ 4 tuần.
+- Release chỉ khi luật qua dải phát triển (một lần) → **kiểm định tiến** trên dữ liệu sau ngày chốt (đạt mốc chốt
+  trước) → dry-run ≥ 4 tuần. Holdout 2026-04 → 2026-10 đã dùng một lần (kiểm định tiến v1).
 
 ## Checklist trước khi code bất kỳ ý tưởng nào (ghi vào STATE hoặc báo cáo)
 1. **Giả thuyết một câu** và **cơ chế kinh tế**: ai đang trả tiền cho lợi thế này, vì sao nó chưa bị arbitrage hết?

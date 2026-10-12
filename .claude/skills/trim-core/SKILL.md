@@ -27,16 +27,14 @@ Làm và commit trực tiếp trên `develop` (xem `.claude/rules/git-workflow.m
 `mypy` chạy với `ignore_missing_imports = true` nên **không** bắt được import tới module đã xóa — luôn chạy `check_imports.py` (quét cả import lười trong hàm).
 ```bash
 .venv/Scripts/python.exe scripts/gate.py      # check_imports, ruff, mypy, toàn bộ pytest, --version, secret
-.venv/Scripts/freqtrade.exe list-strategies --config user_data/config.json
+.venv/Scripts/freqtrade.exe list-strategies --strategy-path tests/strategy/strats   # resolver nạp strategy
 ```
-Thêm một backtest ngắn nếu đã có dữ liệu:
-```bash
-.venv/Scripts/freqtrade.exe backtesting --config user_data/config.json --strategy MyStrategy --timerange 20260501-20260601
-```
+Backtest đầu-cuối đã được test `tests/optimize` bao phủ (dữ liệu `tests/testdata`); khi đã có strategy futures thật
+thì chạy thêm một backtest ngắn bằng nó.
 - `git grep -n "<tên đã xóa>"` không còn kết quả (trừ trim-log).
 
 ## 4. Ghi lại
-- Thêm một dòng vào `docs/trim-log.md`: ngày, phần đã cắt, số file/dòng, chỗ đã sửa, kết quả kiểm chứng.
+- Thêm một dòng vào `docs/trim-log.md`: ngày, phần đã cắt, phần giữ lại có chủ ý / chỗ đã sửa.
 - Cập nhật `docs/structure.md`/`docs/lifecycle.md` nếu bản đồ hoặc luồng thay đổi. Tài liệu tham chiếu code dạng
   `file.py::hàm`, **không ghi số dòng**.
 - Commit bằng `/commit` với type `trim`, ví dụ: `trim(core): remove freqai module and its tests`.

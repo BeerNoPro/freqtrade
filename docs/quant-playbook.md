@@ -1,7 +1,7 @@
 # Quant playbook: các họ mô hình có bằng chứng
 
 Kiến thức nền cho mọi quyết định nghiên cứu/strategy trong repo. Cách làm việc: [.claude/rules/quant-mindset.md](../.claude/rules/quant-mindset.md).
-Bản dễ hiểu về công cụ đo: [huong-dan-nhan-dinh-thi-truong.md](huong-dan-nhan-dinh-thi-truong.md).
+Bộ máy kiểm định: [market-context-engine.md](market-context-engine.md).
 Kết quả cụ thể của từng lần thử nằm trong `user_data/research/STATE.md` (riêng tư).
 
 Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi thế) → **bằng chứng** → **cách dùng ở đây** → **bẫy**.
@@ -102,18 +102,16 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
 - Các quỹ trend-following thành công (CTA) dùng quy tắc **đơn giản, đa dạng thị trường, định cỡ theo rủi ro**,
   và chấp nhận những năm lỗ.
 
-## 10. Đã kiểm định trong repo (kết luận định tính)
-| Hướng | Kết luận |
-|---|---|
-| Hook ngữ cảnh 1h (momentum 4h, nén biến động, funding cực đoan, premium, BTC shock) | Không qua cổng; phí 1h ăn hết |
-| 12 chỉ báo cổ điển × 1h/4h | Không chỉ báo đứng riêng nào đạt; trend 4h nhỉnh hơn 1h; mean-reversion dính bẫy winrate |
-| Regime theo luật | Tách được biên độ tương lai, gần như không tách được hướng → dùng để định cỡ |
-| Trend 4h kiểu turtle, một lookback, trailing chặt | Gần hòa vốn, thua xa mua-giữ |
-| Ensemble Donchian khung ngày + vol-target (tham số gốc của bài báo) | Trên danh sách coin chọn hôm nay thì trông có lợi thế. Trên danh mục point-in-time (top theo thanh khoản tại từng thời điểm, kể cả coin đã delist) phần lớn lợi thế biến mất và thua BTC mua-giữ có vol-target → bác bỏ. Vẫn hơn trend SMA đơn giản và drawdown thấp |
-| Carry funding cắt ngang (long 1/3 funding thấp, short 1/3 funding cao, tái cân bằng tuần, dữ liệu 2025+) | Không đạt: phần funding thu được dương rõ nhưng phần giá âm gần tương đương, Sharpe quanh 0. Funding âm phản ánh xu hướng giảm đúng chứ không phải cơ hội đảo chiều |
-| Mô hình đa yếu tố 4h (logistic trên ~20 đặc trưng: động lượng, biến động, volume, funding, OI, tỷ lệ long/short, bối cảnh BTC; walk-forward; dữ liệu 2025+) | Không đạt: xác suất ngoài mẫu kém hơn tỷ lệ nền và quá tự tin; lợi nhuận nhỏ còn lại chủ yếu là beta phía short trong năm giảm, drawdown lớn. Dữ liệu vị thế gần như không đóng góp. Gộp nhiều tín hiệu yếu không tự tạo ra lợi thế dự báo hướng |
-| Động lượng cắt ngang trung lập beta (top-20 point-in-time, lợi suất 1–4 tuần, long 30% mạnh nhất / short 30% yếu nhất, chân co giãn để beta BTC = 0, giữ 7 ngày, dữ liệu 2025+) | Không đạt: thứ hạng không mang thông tin, phần giá đúng bằng trung vị danh mục chọn ngẫu nhiên. Coin thắng không thắng tiếp sau khi trừ beta; coin thua có giảm thêm nhưng bên short trả funding âm và bị squeeze, mất hết phần lãi. Bản trung lập đô la trông khá hơn chỉ nhờ rò beta |
-| Hook thanh lý 4h (cú chạy ≥ 2 ATR kèm OI sụt bất thường → đi ngược; top-20 point-in-time; dữ liệu 2025+) | Không đạt cổng ý nghĩa: ước lượng dương ở mọi horizon nhưng khoảng tin cậy rộng vì sự kiện hiếm và dồn theo các ngày sập chung; gần như toàn bộ là sập giá (thanh lý phe long). Cú sập không kèm OI sụt thì giảm tiếp, khác rõ cú sập có OI sụt → OI có thể tách bán cưỡng bức khỏi bán chủ động; cần kiểm lại trên mẫu khác. Vào trễ một nến thì mất phần hồi |
-| Kiểm định tiến khối đầu (6 tháng sau IS, luật chốt trước): hook thanh lý, "sập không kèm OI sụt → short", ensemble Donchian hai chiều | Chưa tới mốc kết luận. Hook thanh lý về quanh 0, ước lượng IS không lặp lại; giả thuyết short sau cú sập "chủ động" đổi dấu theo quý. Trend hai chiều: phần long (đúng bài gốc) tốt hơn, phần short kéo xuống trong giai đoạn tăng. Sáu tháng chỉ loại được lợi thế rất lớn |
-| Liều – đáp ứng theo cỡ cú chạy 4h (theo ATR và theo %, dữ liệu mới) | Không có xu hướng: cú chạy càng lớn không cho tiếp diễn hay đảo chiều mạnh hơn sau 12h. Đòi cú chạy lớn hơn không phải cách tìm lợi thế |
-| Bài học chung | Danh sách coin chọn theo hiện tại làm phồng Sharpe đáng kể, chủ yếu do chọn trúng coin sống sót tăng tốt chứ không phải do né coin chết. Kiểm định danh mục phải dùng danh mục point-in-time (`mce.universe`, `mce.archive`). Khi dữ liệu chỉ có từ 2025, cách sạch nhất là kiểm định tiến: chốt luật + fingerprint, chấm bằng chạy lại code đóng băng trên kho lưu trữ, nhật ký trực tiếp để phát setup và đo chi phí thật (`mce.forward`, `mce.journal`, `run_forward.py`) |
+## 10. Đã kiểm định trong repo (kết luận định tính, chi tiết trong `user_data/research/STATE.md`)
+- Chỉ báo cổ điển đứng riêng (1h/4h), hook ngữ cảnh 1h, trend 4h một lookback, mô hình logistic đa yếu tố 4h, carry
+  funding cắt ngang, động lượng cắt ngang trung lập beta (top-20): **không có lợi thế sau phí**. Mean-reversion dính
+  bẫy winrate; gộp nhiều tín hiệu yếu không tạo ra dự báo hướng; dữ liệu vị thế (OI, long/short) gần như không đóng góp.
+- Regime theo luật tách được **biên độ** tương lai, không tách được hướng → dùng để định cỡ, không để đoán chiều.
+- Funding âm phản ánh xu hướng giảm đúng chứ không phải đáy; short coin thua trả funding và dễ bị squeeze.
+- Danh sách coin chọn theo hôm nay làm phồng Sharpe đáng kể → luôn dùng danh mục point-in-time.
+- Cỡ cú chạy 4h (theo ATR hay %) không phân biệt kết quả 12h sau đó: đòi cú chạy lớn hơn không tạo ra lợi thế.
+- Hook thanh lý (sập kèm OI sụt → mua) và ensemble Donchian hai chiều đang được **kiểm định tiến**; khối đầu (6 tháng)
+  chưa đủ để kết luận. Trong giai đoạn tăng, phần short của trend kéo kết quả xuống.
+- Dữ liệu chỉ từ 2025 nên chỉ chứng minh được lợi thế rất lớn (Sharpe ≳ 1,5, hoặc ≈ 0,5R/lệnh với ~200 sự kiện):
+  lợi thế phải tìm ở chỗ ít người làm (ngách thanh khoản thấp hơn, sự kiện có lịch, dòng lệnh), không ở chỉ báo trên
+  nến công khai của coin lớn.
