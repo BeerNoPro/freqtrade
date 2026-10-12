@@ -78,6 +78,18 @@ def snapshot_before(
     return merged[column].to_numpy(dtype=float)
 
 
+def open_interest(pit: Path, symbol: str, end: pd.Timestamp) -> pd.DataFrame | None:
+    """Hourly open interest snapshots (``date``, ``oi_value``) before ``end``: the archive's
+    ``metrics``, completed by ``metrics_api`` (the same series from the live API, see
+    ``mce.live``) where the archive has no row yet. The archive wins on a shared timestamp."""
+    parts = [read_store(pit, kind, symbol, end) for kind in ("metrics", "metrics_api")]
+    parts = [p[["date", "oi_value"]] for p in parts if p is not None and len(p)]
+    if not parts:
+        return None
+    m = pd.concat(parts, ignore_index=True).drop_duplicates("date", keep="first")
+    return m.sort_values("date").reset_index(drop=True)
+
+
 def coin_frame(
     pit: Path, symbol: str, timeframe: str, end: pd.Timestamp, members: pd.DataFrame
 ) -> pd.DataFrame:
@@ -90,7 +102,7 @@ def coin_frame(
     f = add_core_features(k[["date", "open", "high", "low", "close", "volume"]])
     f = add_regime(f, RegimeRules(vol_window=window))
     f["time"] = f["date"] + bar
-    m = read_store(pit, "metrics", symbol, end)
+    m = open_interest(pit, symbol, end)
     if m is not None and len(m):
         m = m[m["oi_value"] > 0]  # the archive has a few zero prints: missing, not a real level
         f["oi_now"] = snapshot_before(f["time"], m, "oi_value", bar)
