@@ -42,14 +42,27 @@ bộ ghi thời gian thực (recorder): dữ liệu sàn không lưu lịch sử
 | `journal.py` | Nhật ký setup sqlite chỉ ghi thêm (trigger chặn sửa/xóa), chấm một lần, đối chiếu live với bản chạy lại |
 | `portfolio.py` | Backtester danh mục tỷ trọng mục tiêu khung ngày (phí, funding, vol-target, bootstrap khối, Deflated Sharpe) |
 | `recorder.py` | Bộ ghi dữ liệu không có lịch sử (mục 3) + báo cáo độ phủ |
+| `audit.py` | Kiểm toán kho: nến (trùng, sai thứ tự, OHLC vô lý, khoảng trống, nến giả sau delist, mã dùng lại tên), funding, metrics, nến ngày khớp nến 4h; đối chiếu mẫu với API fapi và data.binance.vision qua `Sources` (không gọi mạng trong module) |
 
-Script: `download_pit_universe.py` (kho point-in-time), `record_market.py` + `schedule_recorder.ps1` (bộ ghi),
-`recorder_coverage.py` (độ phủ), `run_forward.py` + `schedule_forward.ps1` (runner kiểm định tiến).
+Script: `download_pit_universe.py` (kho point-in-time; `--plan-only` ước lượng khối lượng tải), `record_market.py` +
+`schedule_recorder.ps1` (bộ ghi), `recorder_coverage.py` (độ phủ), `run_forward.py` + `schedule_forward.ps1` (runner
+kiểm định tiến), `audit_store.py` + `schedule_audit.ps1` (kiểm toán kho).
 
 ## 3. Dữ liệu
 **Kho point-in-time** `user_data/research/pit/` (`download_pit_universe.py`, cập nhật hằng ngày bởi runner): nến ngày
 mọi coin ứng viên; nến 4h, funding, OI (ảnh chụp mỗi giờ phút :50) cho coin từng vào top-25, từ 100 ngày trước lần đầu.
 Từ 2024-01 (2024 chỉ để làm nóng chỉ báo; đánh giá từ 2025).
+
+**Kho lịch sử** `user_data/research/pit_hist/`: cùng cấu trúc, từ 2022-01 (làm nóng) cho khối lịch sử khóa 2023–2024
+(`thresholds.json` → `history_block`: chỉ chạy một lần luật đã chốt). Runner không đồng bộ kho này; tải lại bằng
+`download_pit_universe.py --outdir user_data/research/pit_hist --start 2022-01-01` (ghi nối, chạy tiếp được).
+
+**Kiểm toán kho** (`audit_store.py`, task `freqtrade-data-audit` 03:00 UTC): quét offline mọi file, đối chiếu mẫu với
+API và kho lưu trữ (`--verify N`, phân tầng theo năm, tất định theo `--seed`). Báo cáo
+`user_data/reports/audit/latest/<kho>/` (`summary.md`, `issues.csv`, `symbols.csv`, `zombie_members.csv`,
+`verify.csv`); mã thoát 1 khi có lỗi critical mới. Lỗi đã đối chiếu tay ghi ở `user_data/research/audit_known.csv`
+(mức `known`). Bẫy đã gặp: API trả nến giả (giá đứng yên, khối lượng 0) và funding cho mã đã delist đến tận hôm nay,
+nên ngày delist = ngày cuối có khối lượng > 0; mã đổi tên trông như niêm yết mới; tên mã có thể bị dùng lại.
 
 **Kho `data.binance.vision`** có lịch sử (tải khi cần): nến mọi khung (cả mark, index, premium), funding, lệnh khớp,
 OI + long/short + taker mỗi 5 phút (`metrics`), độ dày sổ lệnh ±0,2–5% mỗi 30 giây (`bookDepth`).

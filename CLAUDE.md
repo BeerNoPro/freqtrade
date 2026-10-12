@@ -47,7 +47,8 @@ Agent định nghĩa sẵn (`.claude/agents/`, chạy khi người dùng gọi t
 theo checklist), `strategy-reviewer` (phản biện chỉ đọc: overfit, lookahead, phí, so mốc).
 
 Vận hành nghiên cứu: `scripts/research/run_forward.py --status` (nhật ký kiểm định tiến),
-`scripts/research/recorder_coverage.py` (độ phủ bộ ghi), `scripts/research/download_pit_universe.py` (kho point-in-time).
+`scripts/research/recorder_coverage.py` (độ phủ bộ ghi), `scripts/research/download_pit_universe.py` (kho point-in-time),
+`scripts/research/audit_store.py` (kiểm toán kho, đối chiếu Binance; đọc báo cáo trước khi tin một kết quả).
 
 ## Môi trường & lệnh
 - Windows, Python 3.13 trong `.venv` (quản lý bằng **uv**, không có pip): `uv pip install --python .venv/Scripts/python.exe ...`

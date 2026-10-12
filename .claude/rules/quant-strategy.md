@@ -28,8 +28,13 @@ Thiết kế gốc: [docs/signal-bot-workflow.md](../../docs/signal-bot-workflow
 4. Ngưỡng đạt trên OOS: ≥ 150 tín hiệu, profit factor ≥ 1.3, kỳ vọng ≥ +0.2R/tín hiệu, drawdown ≤ 15R, không cặp nào > 30% lợi nhuận.
 
 ## Dải dữ liệu
-- Chỉ đánh giá trên dữ liệu gần: **2025-01-01 → nay**. Dữ liệu cũ hơn chỉ dùng để làm nóng chỉ báo hoặc cho điều kiện
-  lịch sử của danh mục. Dải IS/holdout hiện hành nằm trong `user_data/research/thresholds.json`.
+- Phát triển và IS trên dữ liệu gần: **2025-01-01 → nay**. Dải IS/holdout hiện hành nằm trong
+  `user_data/research/thresholds.json`.
+- **Khối lịch sử khóa 2023-01-01 → 2024-12-31** (kho `user_data/research/pit_hist`, làm nóng từ 2022): không bao giờ
+  dùng để phát triển hay chỉnh luật. Mỗi luật đã chốt chạy trên khối này **một lần**. Luật chỉ tính là đạt khi lợi thế
+  cùng dấu ở cả khối lịch sử và khối 2025+. Không sạch với họ ensemble Donchian và chỉ báo 1h đã thử trước commit
+  `71def37` (đã chạy trên dữ liệu cũ).
+- Trước khi dùng một kho dữ liệu: chạy `scripts/research/audit_store.py` (có `--verify`) và đọc báo cáo kiểm toán.
 - Mẫu ngắn → luôn báo CI bootstrap và nói rõ độ tin cậy thấp.
 
 ## Strategy cấp danh mục (tỷ trọng theo ngày, vol-targeting, long-short)

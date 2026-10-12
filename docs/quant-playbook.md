@@ -85,9 +85,10 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
 
 ## 8. Chuẩn kiểm định
 - Dải IS để phát triển, **holdout chạy một lần**, walk-forward có purge/embargo cho mô hình có fit.
-- Dữ liệu đánh giá: **2025 → nay** (chế độ thị trường gần nhất). Đổi lại mẫu ngắn: một năm dữ liệu ngày cho sai số
-  chuẩn của Sharpe khoảng 1,0, nên luôn báo CI bootstrap và ưu tiên tín hiệu cắt ngang nhiều coin (nhiều quan sát
-  độc lập hơn) hơn tín hiệu trên một tài sản.
+- Dữ liệu phát triển: **2025 → nay** (chế độ thị trường gần nhất); thêm **khối lịch sử khóa 2023–2024**, chỉ để
+  chạy một lần luật đã chốt và đòi cùng dấu ở cả hai khối. Mẫu vẫn ngắn: một năm dữ liệu ngày cho sai số chuẩn của
+  Sharpe khoảng 1,0, nên luôn báo CI bootstrap và ưu tiên tín hiệu cắt ngang nhiều coin (nhiều quan sát độc lập hơn)
+  hơn tín hiệu trên một tài sản.
 - Danh mục coin phải **point-in-time** (chọn theo thanh khoản tại từng thời điểm, kể cả coin đã delist), không dùng
   danh sách chọn theo hiện tại.
 - Đếm **mọi lần thử** trên IS. Dùng Deflated Sharpe Ratio (Bailey & López de Prado, 2014) và Probability of
@@ -112,6 +113,10 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
 - Cỡ cú chạy 4h (theo ATR hay %) không phân biệt kết quả 12h sau đó: đòi cú chạy lớn hơn không tạo ra lợi thế.
 - Hook thanh lý (sập kèm OI sụt → mua) và ensemble Donchian hai chiều đang được **kiểm định tiến**; khối đầu (6 tháng)
   chưa đủ để kết luận. Trong giai đoạn tăng, phần short của trend kéo kết quả xuống.
-- Dữ liệu chỉ từ 2025 nên chỉ chứng minh được lợi thế rất lớn (Sharpe ≳ 1,5, hoặc ≈ 0,5R/lệnh với ~200 sự kiện):
-  lợi thế phải tìm ở chỗ ít người làm (ngách thanh khoản thấp hơn, sự kiện có lịch, dòng lệnh), không ở chỉ báo trên
-  nến công khai của coin lớn.
+- Với 15 tháng dữ liệu 2025+, kiểm tra dương tính cho thấy chỉ phát hiện được lợi thế rất lớn (Sharpe ≈ 2 mới đạt
+  ~75% số lần; ≈ 0,3–0,5R/lệnh với ~200 sự kiện). Khối lịch sử 2023–2024 (chạy một lần) hạ ngưỡng này. Lợi thế phải
+  tìm ở chỗ ít người làm (ngách thanh khoản thấp hơn, sự kiện có lịch, dòng lệnh), không ở chỉ báo trên nến công
+  khai của coin lớn.
+- Dữ liệu sàn có bẫy: API trả nến giả (giá đứng yên, khối lượng 0) và cả funding cho mã đã delist; mã đổi tên (FTM→S,
+  MATIC→POL, RNDR→RENDER, BNX→FORM) trông như niêm yết mới; tên mã có thể được dùng lại cho token khác. Kiểm toán kho
+  (`scripts/research/audit_store.py`) trước khi tin một kết quả.
