@@ -135,6 +135,13 @@ class Runner:
         logger.info("store synced: %d daily candles, %d coins at 4h", len(stale), len(need))
         return list(today[today].index)
 
+    def full_sync_due(self, now: pd.Timestamp) -> bool:
+        """The daily full sync runs once per UTC day, after FULL_SYNC_AT (the day it last
+        succeeded is kept in ``forward/last_full_sync``, so restarts do not repeat it)."""
+        path = OUT / "last_full_sync"
+        done = path.read_text(encoding="utf-8").strip() if path.exists() else ""
+        return now - now.floor("D") >= FULL_SYNC_AT and done != f"{now:%Y-%m-%d}"
+
     def full_sync(self) -> None:
         cmd = [sys.executable, str(Path(__file__).with_name("download_pit_universe.py"))]
         cmd += ["--outdir", str(self.pit)]
@@ -142,6 +149,9 @@ class Runner:
             cmd, cwd=REPO, capture_output=True, text=True, timeout=7200, check=False
         )
         logger.info("full store sync exit %s: %s", done.returncode, done.stdout.strip()[-300:])
+        if done.returncode == 0:
+            day = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d")
+            (OUT / "last_full_sync").write_text(day, encoding="utf-8")
 
     # ------------------------------------------------------------ setups
 
@@ -321,13 +331,11 @@ def main() -> None:
         runner = Runner(
             load_spec(args.spec), ccxt.binanceusdm({"enableRateLimit": True, "timeout": 30_000})
         )
-        last_full = None
         while True:
             now = pd.Timestamp.now(tz="UTC")
             try:
-                if last_full != now.floor("D") and now - now.floor("D") >= FULL_SYNC_AT:
+                if runner.full_sync_due(now):
                     runner.full_sync()
-                    last_full = now.floor("D")
                 runner.cycle(now)
             except Exception:  # network, exchange or data hiccup: retry at the next close
                 logger.exception("cycle failed")
@@ -336,7 +344,7 @@ def main() -> None:
             if args.once:
                 return
             nxt = now.floor("4h") + BAR + DECISION_DELAY
-            if last_full != now.floor("D"):
+            if runner.full_sync_due(now.floor("D") + FULL_SYNC_AT):
                 nxt = min(nxt, now.floor("D") + FULL_SYNC_AT)
             wait_until(max(nxt, now + pd.Timedelta(seconds=30)))
     finally:
