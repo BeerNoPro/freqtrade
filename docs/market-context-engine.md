@@ -46,7 +46,8 @@ bộ ghi thời gian thực (recorder): dữ liệu sàn không lưu lịch sử
 | `listings.py` | Mã đổi tên và mã dùng lại tên (đánh dấu tay), đo trên kho (ngày, khoảng nghỉ, tỷ lệ giá), gợi ý cặp chưa đánh dấu |
 | `snapshot.py` | Ảnh chụp trước/sau: digest bảng và so từng dòng theo khóa (chứng minh đầu ra luật đã đăng ký không đổi, hoặc liệt kê đủ chênh lệch) |
 | `power.py` | Sức thống kê của luật đạt trước khi nghiên cứu (kiểm tra dương tính): cài lợi thế biết trước vào nhiễu đã trừ trung bình, áp cổng danh mục hoặc cổng sự kiện, tỷ lệ cùng dấu cho khối lịch sử; không đầu ra nào phụ thuộc trung bình của kết quả thật (có test) |
-| `intraday.py` | Nến 1 phút quanh sự kiện (giờ thanh toán funding…) từ file ngày của data.binance.vision, chỉ tải ngày có sự kiện, lưu loại `klines_1m_events` |
+| `intraday.py` | Nến 1 phút quanh sự kiện (giờ thanh toán funding…) từ file ngày của data.binance.vision, chỉ tải ngày có sự kiện, lưu loại `klines_1m_events`; đọc file ngày `aggTrades` (lệnh khớp có chiều taker) và `bookDepth` (độ sâu ±0,2–5% mỗi 30 giây) |
+| `costs.py` | Chi phí giao dịch theo coin, thời điểm và cỡ lệnh: phí (VIP0 mặc định), nửa chênh lệch giá dựng lại từ lệnh khớp, tác động đi qua sổ lệnh `bookDepth`, funding; khứ hồi theo bp và R. Kiểm chứng với giá mua/bán và sổ lệnh thật của bộ ghi (`user_data/research/cost_check_v1.py`) |
 
 Script: `download_pit_universe.py` (kho point-in-time; `--plan-only` ước lượng khối lượng tải), `record_market.py` +
 `schedule_recorder.ps1` (bộ ghi), `recorder_coverage.py` (độ phủ), `run_forward.py` + `schedule_forward.ps1` (runner

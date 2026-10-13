@@ -219,6 +219,24 @@ def compact_day(stream_dir: Path, day: str) -> int:
     return len(df)
 
 
+def read_day(outdir: Path, stream: str, day: str) -> pd.DataFrame:
+    """All rows of one stream day (YYYY-MM-DD, UTC), compacted or still in part files, typed and
+    sorted by time. Empty when nothing was recorded."""
+    stream_dir = outdir / stream
+    frames, out = [], stream_dir / f"{day}.parquet"
+    if out.exists():
+        frames.append(pd.read_parquet(out))
+    parts = sorted((stream_dir / day).glob("part-*.jsonl")) if (stream_dir / day).is_dir() else []
+    if parts:
+        rows, _ = _read_parts(parts)
+        frames.append(_typed(pd.DataFrame(rows)))
+    if not frames:
+        return pd.DataFrame()
+    df = _typed(pd.concat(frames, ignore_index=True))
+    sort = [c for c in TIME_COLUMNS if c in df.columns]
+    return df.sort_values(sort, kind="stable").reset_index(drop=True) if sort else df
+
+
 def beat(path: Path, writer: PartWriter, now: int, max_silence_ms: int) -> None:
     """Store the heartbeat time; a longer silence than ``max_silence_ms`` since the previous
     beat (recorder stopped, machine asleep) is logged as a gap of every stream."""

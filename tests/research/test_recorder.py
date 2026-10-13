@@ -17,6 +17,7 @@ from mce.recorder import (
     force_order_row,
     next_run,
     option_series,
+    read_day,
     record_ws,
     snapshot_rows,
     top_symbols,
@@ -238,6 +239,19 @@ def test_coverage_counts_overlapping_gaps_once(tmp_path: Path) -> None:
     second = cov.loc[("liquidations", "2026-10-11")]
     assert second["coverage"] == pytest.approx(16 / 24)  # 02:00-09:30 and 12:00-12:30
     assert second["gap_min"] == 480
+
+
+def test_read_day_merges_compacted_and_open_rows(tmp_path: Path) -> None:
+    writer = PartWriter(tmp_path)
+    t = DAY_MS - 3_600_000  # 2026-10-10 23:00
+    row = {"symbol": "BTCUSDT", "bidPrice": "99.9", "askPrice": "100.1"}
+    writer.append("book_ticker", [{"taken": t, **row}], t)
+    compact_all(tmp_path, "2026-10-11")
+    writer.append("book_ticker", [{"taken": t + 60_000, **row, "bidPrice": "100.0"}], t + 60_000)
+    df = read_day(tmp_path, "book_ticker", "2026-10-10")  # one parquet row + one part row
+    assert list(df["taken"]) == [t, t + 60_000]
+    assert list(df["bidPrice"]) == [99.9, 100.0] and df["askPrice"].dtype == float
+    assert read_day(tmp_path, "book_ticker", "2026-10-09").empty
 
 
 def test_heartbeat_logs_a_long_silence_as_a_gap(tmp_path: Path) -> None:
