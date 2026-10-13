@@ -111,6 +111,9 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
 - Funding âm phản ánh xu hướng giảm đúng chứ không phải đáy; short coin thua trả funding và dễ bị squeeze.
 - Danh sách coin chọn theo hôm nay làm phồng Sharpe đáng kể → luôn dùng danh mục point-in-time.
 - Cỡ cú chạy 4h (theo ATR hay %) không phân biệt kết quả 12h sau đó: đòi cú chạy lớn hơn không tạo ra lợi thế.
+- Price action "xu hướng → cấu trúc → vùng giá → xác nhận" đo từng lớp trên top-20 khung 4h (`mce/price_action.py`):
+  vào theo cấu trúc, vào ở lần hồi về vùng vừa bị phá, hay chờ thêm nến từ chối giá/nhấn chìm đều không có lợi thế
+  sau phí. Lần hồi về vùng còn hơi kém hơn vào ở nến bất kỳ. Lớp xác nhận chỉ đổi winrate và cách thoát lệnh.
 - Hook thanh lý (sập kèm OI sụt → mua) và ensemble Donchian hai chiều đang được **kiểm định tiến**; khối đầu (6 tháng)
   chưa đủ để kết luận. Trong giai đoạn tăng, phần short của trend kéo kết quả xuống.
 - Với 15 tháng dữ liệu 2025+, kiểm tra dương tính cho thấy chỉ phát hiện được lợi thế rất lớn (Sharpe ≈ 2 mới đạt
