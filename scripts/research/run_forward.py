@@ -1,6 +1,6 @@
 """
 Forward-test runner. At every 4h close (+90 s) it updates the point-in-time store from public
-Binance endpoints, asks the registered rules (``user_data/research/forward_v1.py``) for setups,
+Binance endpoints, asks the registered rules (``SPECS`` in ``user_data/research``) for setups,
 writes new ones to the journal before any outcome exists, and scores the ones whose exit is
 known. Daily: the trend setups and exits (00:00 UTC close) and a full store sync (01:30 UTC,
 ``download_pit_universe.py``). Closes missed while the machine slept are caught up and marked
@@ -59,7 +59,7 @@ DECISION_DELAY = pd.Timedelta(seconds=90)
 LIVE_WINDOW = pd.Timedelta(minutes=15)  # later than this after the close -> live_late
 FULL_SYNC_AT = pd.Timedelta(hours=1, minutes=30)  # daily, after the archive publishes
 WARMUP = pd.Timedelta(days=100)
-SPECS = "forward_v1"  # registered rule modules, comma-separated
+SPECS = "forward_v1,forward_v2"  # registered rule modules, comma-separated
 PRODUCT_CONFIG = RESEARCH / "product.json"
 FREQTRADE_CONFIG = REPO / "user_data" / "config.json"  # telegram.token / chat_id
 RECORDER = RESEARCH / "live"
