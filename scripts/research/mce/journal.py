@@ -242,6 +242,8 @@ def score_barriers(
             continue
         n = int(s.max_bars)
         path = candles(s.pair, s.timeframe, s.candle_date, n).reset_index(drop=True)
+        if path.empty:  # no candle closed after the entry yet (or the coin stopped trading)
+            continue
         target = None if pd.isna(s.target) else float(s.target)
         reason, i, price = barrier_exit(s.side, s.stop, target, path)
         if reason == "time" and len(path) < n:

@@ -87,6 +87,17 @@ def test_barrier_scoring_waits_for_closed_candles_and_counts_stop_first(tmp_path
     assert row["net_r"] == pytest.approx(-1.0 - 0.06)
 
 
+def test_barrier_scoring_skips_a_setup_without_any_candle_after_it(tmp_path: Path) -> None:
+    """Right after the decision no candle has closed after the entry yet (the cycle that records a
+    setup also scores): the setup waits, the older ones are still scored."""
+    conn = journal.connect(tmp_path / "j.sqlite")
+    journal.record_setup(conn, _setup(pair="OLDUSDT"))
+    journal.record_setup(conn, _setup(pair="NEWUSDT", candle_date="2026-01-02T00:00:00+00:00"))
+    path = _candles({"OLDUSDT": [(105, 97, 103)], "NEWUSDT": []})
+    assert journal.score_barriers(conn, path, _no_funding, BAR, 0.0) == 1
+    assert journal.pending(conn)["pair"].tolist() == ["NEWUSDT"]
+
+
 def test_short_target_time_exit_and_funding(tmp_path: Path) -> None:
     conn = journal.connect(tmp_path / "j.sqlite")
     short = _setup(side=-1, stop=102.0, target=96.0)
