@@ -116,6 +116,9 @@ Mỗi họ mô hình được mô tả theo: **cơ chế** (vì sao có lợi th
   sau phí. Lần hồi về vùng còn hơi kém hơn vào ở nến bất kỳ. Lớp xác nhận chỉ đổi winrate và cách thoát lệnh.
 - Hook thanh lý (sập kèm OI sụt → mua) và ensemble Donchian hai chiều đang được **kiểm định tiến**; khối đầu (6 tháng)
   chưa đủ để kết luận. Trong giai đoạn tăng, phần short của trend kéo kết quả xuống.
+- Bản gốc **chỉ LONG** của Zarattini và cộng sự (đúng tham số bài, danh mục top-20 coin niêm yết ≥ 1 năm) kiểm định
+  tiến từ 2026-10-14, kết luận một lần sau 2 năm. Sức thống kê thấp: nếu Sharpe thật ≈ 1 thì chỉ ~40% khả năng qua
+  cổng sau 2 năm; khối lịch sử 2023–2024 không dùng được cho họ này.
 - Với 15 tháng dữ liệu 2025+, kiểm tra dương tính cho thấy chỉ phát hiện được lợi thế rất lớn (Sharpe ≈ 2 mới đạt
   ~75% số lần; ≈ 0,3–0,5R/lệnh với ~200 sự kiện). Khối lịch sử 2023–2024 (chạy một lần) hạ ngưỡng này. Lợi thế phải
   tìm ở chỗ ít người làm (ngách thanh khoản thấp hơn, sự kiện có lịch, dòng lệnh), không ở chỉ báo trên nến công

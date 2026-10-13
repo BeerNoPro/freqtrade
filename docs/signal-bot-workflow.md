@@ -128,11 +128,14 @@ Sổ: rủi ro 0.25% → +0.49% vốn (+49 USDT)
 1. Mở @BotFather → `/newbot` → đặt tên → nhận **token**.
 2. Nhắn một tin bất kỳ cho bot vừa tạo.
 3. Lấy **chat_id**: mở `https://api.telegram.org/bot<TOKEN>/getUpdates`, tìm `"chat":{"id": ...}`.
-4. Điền `telegram.token`, `telegram.chat_id` trong `user_data/config.json` (không commit), hoặc biến môi trường
-   `FREQTRADE__TELEGRAM__TOKEN`, `FREQTRADE__TELEGRAM__CHAT_ID` trên VPS. **Giữ `telegram.enabled = false`**: đó là
-   công tắc bot điều khiển của Freqtrade (nhận lệnh), runner không dùng nó.
-5. Bật gửi: `telegram_send: true` trong `user_data/research/product.json`, khởi động lại runner. Kiểm tra trước bằng
-   `run_forward.py --telegram-test`.
+4. Ghi vào file `.env` ở gốc repo (git bỏ qua, không commit): `TELEGRAM_BOT_TOKEN=<token>` và
+   `TELEGRAM_ADMIN_CHAT_IDS=<chat_id>` (lấy id đầu tiên). Runner tìm lần lượt: biến môi trường của tiến trình
+   (`FREQTRADE__TELEGRAM__TOKEN` / `..._CHAT_ID`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_ADMIN_CHAT_IDS`),
+   rồi `.env`, rồi `telegram.token` / `telegram.chat_id` trong `user_data/config.json`. **Giữ
+   `telegram.enabled = false`**: đó là công tắc bot điều khiển của Freqtrade (nhận lệnh), runner không dùng nó.
+5. Kiểm tra bằng `run_forward.py --telegram-test` (gửi 1 tin), rồi bật gửi: `telegram_send: true` trong
+   `user_data/research/product.json` và khởi động lại runner. Trên VPS: đưa các biến trên vào môi trường của service
+   `forward` (ví dụ `env_file: .env` trong docker-compose).
 
 Runner chỉ gọi `sendMessage`, không đọc tin đến (`getUpdates`) nên không ai điều khiển được bot. Token bị che trong mọi
 log và lỗi. Tin chờ gửi quá 6 giờ (mất mạng lâu) thì bỏ, vẫn còn trong `messages.log`; khi tắt gửi, tin chỉ lưu cục bộ
@@ -167,8 +170,8 @@ skill `/validate-strategy` (lookahead, recursive, backtest). Secret chỉ trong 
 | Bước | Việc | Ai làm |
 |---|---|---|
 | 0 | Tìm luật có lợi thế: chốt trước, dải phát triển một lần, kiểm định tiến. Trạng thái: `user_data/research/STATE.md` | Claude |
-| 1 | Luồng thử nghiệm: ngân sách rủi ro, tin đầy đủ, theo dõi tới khi đóng, tổng kết, cảnh báo (mục 3–7) | Claude |
-| 2 | Bật Telegram thử nghiệm (nhãn rõ) | Bạn duyệt |
+| 1 | Luồng thử nghiệm: ngân sách rủi ro, tin đầy đủ, theo dõi tới khi đóng, tổng kết, cảnh báo (mục 3–7). Xong 2026-10-13 | Claude |
+| 2 | Bật Telegram thử nghiệm (nhãn rõ). Bật 2026-10-13 | Bạn duyệt |
 | 3 | Chạy VPS 24/7 (`docker compose up -d --build recorder forward`) | Bạn (Claude hướng dẫn) |
 | 4 | Luật đạt mốc → bỏ nhãn luật đó, dry-run ≥ 4 tuần, so với bản chạy lại | Cùng làm |
 | 5 | Giai đoạn 2: port Freqtrade, tự vào lệnh với vốn nhỏ | Quyết định sau |
