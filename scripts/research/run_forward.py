@@ -19,6 +19,7 @@ import argparse
 import importlib
 import json
 import logging
+import sqlite3
 import subprocess
 import sys
 import time
@@ -29,7 +30,7 @@ from types import ModuleType
 import ccxt
 import pandas as pd
 from filelock import FileLock, Timeout
-from mce import journal
+from mce import journal, riskbook
 from mce.archive import sync_funding, sync_klines
 from mce.forward import make_setup
 from mce.labels import funding_between
@@ -299,6 +300,31 @@ def status() -> None:
         print(pd.DataFrame({"n": g.size(), "mean_net_r": g.mean(), "sum_net_r": g.sum()}))
 
 
+def copy_journal(dest: Path) -> sqlite3.Connection:
+    """Consistent copy of the live journal (sqlite backup of a read-only connection)."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    src = sqlite3.connect(f"file:{(OUT / 'journal.sqlite').as_posix()}?mode=ro", uri=True)
+    copy = sqlite3.connect(dest)
+    src.backup(copy)
+    src.close()
+    return copy
+
+
+def preview(out: Path, book_start: pd.Timestamp, now: pd.Timestamp) -> None:
+    """The product layer on a copy of the journal, without network or Telegram: a fresh book in
+    ``out`` and what it decided."""
+    path = out / "product.sqlite"
+    path.unlink(missing_ok=True)
+    conn = copy_journal(out / "journal.sqlite")
+    book = riskbook.connect(path)
+    allocs, closes = riskbook.update(
+        book, journal.setups(conn), journal.scored(conn), riskbook.RiskPolicy(), book_start, now
+    )
+    cols = ["setup_id", "decided_at", "strategy", "pair", "side", "state", "bet_size", "risk"]
+    print(allocs[[*cols, "open_long", "open_short"]].to_string(index=False))
+    print(closes.to_string(index=False) if len(closes) else "no closure")
+
+
 def wait_until(t: pd.Timestamp) -> None:
     while (left := (t - pd.Timestamp.now(tz="UTC")).total_seconds()) > 0:
         time.sleep(min(left, 60))  # short naps: a wake-up from machine sleep is noticed quickly
@@ -310,9 +336,18 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="run one cycle now and exit")
     parser.add_argument("--status", action="store_true", help="print the journal summary")
     parser.add_argument("--log", type=Path, default=REPO / "user_data" / "logs" / "forward.log")
+    parser.add_argument("--preview", type=Path, help="run the product layer on a journal copy")
+    parser.add_argument("--book-start", help="preview: first decision time of the book (ISO)")
+    parser.add_argument("--now", help="preview: the time it runs at (ISO, default now)")
     args = parser.parse_args()
     if args.status:
         status()
+        return
+    if args.preview:
+        spec = load_spec(args.spec)
+        start = pd.Timestamp(args.book_start or spec.LIVE_START)
+        now = pd.Timestamp(args.now) if args.now else pd.Timestamp.now(tz="UTC")
+        preview(args.preview, start, now)
         return
     args.log.parent.mkdir(parents=True, exist_ok=True)
     handlers: list[logging.Handler] = [
