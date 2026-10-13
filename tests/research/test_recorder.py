@@ -220,6 +220,21 @@ def test_coverage_counts_snapshots_gaps_and_compaction(tmp_path: Path) -> None:
     assert liq["coverage"] == pytest.approx(11 / 24) and liq["late_compaction"]
 
 
+def test_coverage_of_selected_days_keeps_the_first_day_rule(tmp_path: Path) -> None:
+    """Only the days asked for are read; the stream's first day is still the first one ever (the
+    time before its first row counts as missing only there)."""
+    writer, hour = PartWriter(tmp_path), 3_600_000
+    day1, day2 = DAY_MS - 24 * hour, DAY_MS
+    writer.append("liquidations", [{"received": day1 + 6 * hour, "symbol": "X"}], day1 + 6 * hour)
+    writer.append("liquidations", [{"received": day2 + 6 * hour, "symbol": "X"}], day2 + 6 * hour)
+    at = day2 + 24 * hour
+    second = coverage(tmp_path, at_ms=at, days=["2026-10-11"])
+    assert second["day"].tolist() == ["2026-10-11"] and second["coverage"].iloc[0] == 1.0
+    first = coverage(tmp_path, at_ms=at, days=["2026-10-10"])
+    assert first["coverage"].iloc[0] == pytest.approx(18 / 24)
+    assert coverage(tmp_path, at_ms=at, days=[]).empty
+
+
 def test_coverage_counts_overlapping_gaps_once(tmp_path: Path) -> None:
     writer, hour = PartWriter(tmp_path), 3_600_000
     day1, day2 = DAY_MS - 24 * hour, DAY_MS

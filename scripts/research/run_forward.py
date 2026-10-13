@@ -8,14 +8,18 @@ known. Daily: the trend setups and exits (00:00 UTC close) and a full store sync
 one. One instance at a time.
 
 After each cycle the product layer (``mce.product``, configured by ``user_data/research/
-product.json``) updates the risk book from the journal and writes the setup, close and weekly
-messages to ``forward/messages.log``. Its failures are logged and never stop the journal.
+product.json``) updates the risk book from the journal, writes the setup, close and weekly
+messages to ``forward/messages.log``, checks operations (late cycles, recorder, reconciliation,
+fingerprint) and, when ``telegram_send`` is on, delivers to Telegram (send only; token and chat
+id in ``user_data/config.json`` ``telegram``). Its failures are logged and never stop the
+journal.
 
     .venv/Scripts/python.exe scripts/research/run_forward.py            # until stopped
     .venv/Scripts/python.exe scripts/research/run_forward.py --once     # one cycle now
     .venv/Scripts/python.exe scripts/research/run_forward.py --status   # journal and book
     .venv/Scripts/python.exe scripts/research/run_forward.py --preview DIR  # product layer on a
         journal copy, no network ([--book-start ISO] [--now ISO])
+    .venv/Scripts/python.exe scripts/research/run_forward.py --telegram-test  # one message
 
 Windows: ``scripts/research/schedule_forward.ps1``. VPS: service ``forward`` in docker-compose.yml.
 """
@@ -41,6 +45,7 @@ from mce.archive import sync_funding, sync_klines
 from mce.forward import make_setup
 from mce.labels import funding_between
 from mce.live import quote, sync_open_interest, with_retry
+from mce.outbox import TelegramSender, credentials
 from mce.pit import daily_members, read_store
 from mce.product import Product, ProductConfig
 from mce.universe import is_candidate
@@ -55,6 +60,8 @@ LIVE_WINDOW = pd.Timedelta(minutes=15)  # later than this after the close -> liv
 FULL_SYNC_AT = pd.Timedelta(hours=1, minutes=30)  # daily, after the archive publishes
 WARMUP = pd.Timedelta(days=100)
 PRODUCT_CONFIG = RESEARCH / "product.json"
+FREQTRADE_CONFIG = REPO / "user_data" / "config.json"  # telegram.token / chat_id
+RECORDER = RESEARCH / "live"
 logger = logging.getLogger("forward")
 
 
@@ -63,16 +70,38 @@ def load_spec(name: str) -> ModuleType:
     return importlib.import_module(name)
 
 
-def load_product(conn: sqlite3.Connection, out: Path = OUT, **kw) -> Product | None:
+def telegram_sender() -> TelegramSender | None:
+    """Send-only client from the Freqtrade config (or ``FREQTRADE__TELEGRAM__*``)."""
+    found = credentials(FREQTRADE_CONFIG)
+    return TelegramSender(*found) if found else None
+
+
+def load_product(
+    conn: sqlite3.Connection,
+    out: Path = OUT,
+    live: bool = False,
+    book_start: pd.Timestamp | None = None,
+) -> Product | None:
     """The product layer on journal ``conn`` (book and outbox in ``out/product.sqlite``), or None
-    without ``product.json``."""
+    without ``product.json``. ``live``: the runner's own, with the recorder checks and Telegram
+    when the config turns it on."""
     if not PRODUCT_CONFIG.exists():
         logger.warning("no %s: product layer off", PRODUCT_CONFIG)
         return None
     cfg = ProductConfig.load(PRODUCT_CONFIG)
-    if "book_start" in kw:
-        cfg = replace(cfg, book_start=kw.pop("book_start"))
-    return Product(conn, out / "product.sqlite", cfg, out / "messages.log", **kw)
+    if book_start is not None:
+        cfg = replace(cfg, book_start=book_start)
+    sender = telegram_sender() if live and cfg.telegram_send else None
+    if live and cfg.telegram_send and sender is None:
+        logger.warning("telegram_send is on but no token/chat_id: messages stay local")
+    return Product(
+        conn,
+        out / "product.sqlite",
+        cfg,
+        out / "messages.log",
+        sender=sender,
+        recorder_dir=RECORDER if live else None,
+    )
 
 
 class Runner:
@@ -83,9 +112,8 @@ class Runner:
         self.conn = journal.connect(OUT / "journal.sqlite")
         self.fee = spec.POLICY.round_trip_fee
         self.product: Product | None = None
-        self.no_price: dict[
-            int, pd.Timestamp
-        ] = {}  # trend setups closed by the rules without price
+        # trend setups the rules closed without a price (the coin stopped trading)
+        self.no_price: dict[int, pd.Timestamp] = {}
 
     # ------------------------------------------------------------ store
 
@@ -264,18 +292,37 @@ class Runner:
         scored = journal.score_barriers(self.conn, self.candles, self.funding, BAR, self.fee)
         closed = self.close_trend(trades)
         logger.info("scored %d barrier setups, closed %d trend setups", scored, closed)
-        self.reconcile(pd.concat([rows4, trades], ignore_index=True))
-        self.product_step(now)
+        issues = self.reconcile(pd.concat([rows4, trades], ignore_index=True))
+        self.product_step(now, decision, issues, registered)
 
-    def product_step(self, now: pd.Timestamp) -> None:
-        """The product layer after the journal is up to date; a failure is logged, never raised."""
+    def product_step(
+        self,
+        now: pd.Timestamp,
+        decision: pd.Timestamp | None = None,
+        issues: int = 0,
+        registered: bool = True,
+    ) -> None:
+        """The product layer after the journal is up to date: book and messages, operational
+        checks, delivery. A failure is logged, never raised."""
         if self.product is None:
             return
         try:
             done = self.product.step(now, self.no_price)
-            logger.info("product: %s", done)
+            alerts = self.product.checks(now, decision or now.floor("4h"), issues, registered)
+            sent = self.product.flush(now)
+            logger.info("product: %s, %d alerts, delivery %s", done, alerts, sent)
         except Exception:
             logger.exception("product step failed")
+
+    def cycle_failed(self, now: pd.Timestamp, error: BaseException) -> None:
+        """Alert for a failed cycle (best effort: the product layer may be what is down)."""
+        if self.product is None:
+            return
+        try:
+            self.product.cycle_failed(now, error)
+            self.product.flush(now)
+        except Exception:
+            logger.exception("cycle failure alert failed")
 
     def reconcile(self, replay: pd.DataFrame) -> int:
         """Every journal setup against the same rules replayed on the store as it is now;
@@ -341,6 +388,19 @@ def preview(out: Path, book_start: pd.Timestamp, now: pd.Timestamp) -> None:
     print(product.status())
 
 
+def telegram_test() -> None:
+    """One message to the configured chat, whatever ``telegram_send`` says."""
+    sender = telegram_sender()
+    if sender is None:
+        raise SystemExit(f"no telegram.token / chat_id in {FREQTRADE_CONFIG} (or FREQTRADE__ env)")
+    now = pd.Timestamp.now(tz="UTC")
+    sender.send(
+        f"THỬ NGHIỆM · kiểm tra kết nối bot tín hiệu lúc {now:%Y-%m-%d %H:%M} UTC. Bot chỉ gửi "
+        "tin (setup, đóng lệnh, tổng kết tuần, cảnh báo vận hành), không nhận lệnh điều khiển."
+    )
+    print(f"sent to chat {sender.chat_id}")
+
+
 def wait_until(t: pd.Timestamp) -> None:
     while (left := (t - pd.Timestamp.now(tz="UTC")).total_seconds()) > 0:
         time.sleep(min(left, 60))  # short naps: a wake-up from machine sleep is noticed quickly
@@ -355,9 +415,13 @@ def main() -> None:
     parser.add_argument("--preview", type=Path, help="run the product layer on a journal copy")
     parser.add_argument("--book-start", help="preview: first decision time of the book (ISO)")
     parser.add_argument("--now", help="preview: the time it runs at (ISO, default now)")
+    parser.add_argument("--telegram-test", action="store_true", help="send one test message")
     args = parser.parse_args()
     if args.status:
         status()
+        return
+    if args.telegram_test:
+        telegram_test()
         return
     if args.preview:
         spec = load_spec(args.spec)
@@ -385,15 +449,16 @@ def main() -> None:
         runner = Runner(
             load_spec(args.spec), ccxt.binanceusdm({"enableRateLimit": True, "timeout": 30_000})
         )
-        runner.product = load_product(runner.conn)
+        runner.product = load_product(runner.conn, live=True)
         while True:
             now = pd.Timestamp.now(tz="UTC")
             try:
                 if runner.full_sync_due(now):
                     runner.full_sync()
                 runner.cycle(now)
-            except Exception:  # network, exchange or data hiccup: retry at the next close
+            except Exception as e:  # network, exchange or data hiccup: retry at the next close
                 logger.exception("cycle failed")
+                runner.cycle_failed(now, e)
                 if args.once:
                     raise
             if args.once:

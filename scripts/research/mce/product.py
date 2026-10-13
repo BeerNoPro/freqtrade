@@ -5,6 +5,11 @@ allocations and closures into messages (``mce.messages``), add the weekly summar
 and queue everything in the outbox (``mce.outbox``); every message is also appended to
 ``messages.log``. The journal is only read.
 
+Operational checks after each cycle (``checks``) post alerts: a cycle run late, the recorder's
+heartbeat stale, a past day of the recorder below 90%, the journal disagreeing with its replay,
+an unregistered rules fingerprint; ``cycle_failed`` for an exception. Repeated alerts share a key
+per day or per 6-hour period, so each is sent once. ``flush`` delivers the outbox.
+
 Configuration: ``user_data/research/product.json`` (private): ``capital``, ``risk`` (caps of
 ``RiskPolicy``), ``book_start``, ``telegram_send``, ``send_kinds``, and per rule its display
 ``name``, ``validated`` flag (drops the experimental label), published ``evidence`` lines and
@@ -13,16 +18,33 @@ Configuration: ``user_data/research/product.json`` (private): ``capital``, ``ris
 
 import json
 import sqlite3
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
 
-from mce import journal, messages, outbox, riskbook
+from mce import journal, messages, outbox, recorder, riskbook
 from mce.riskbook import TAKEN, RiskPolicy
 
 
 KINDS = ("setup", "close", "weekly", "alert")  # sent when Telegram is on; others stay in the log
+LIVE_WINDOW = pd.Timedelta(minutes=15)  # a cycle run later than this after its close is late
+HEARTBEAT_AGE = pd.Timedelta(minutes=15)  # the recorder beats every minute
+GOOD = 0.90  # share of a day the recorder must cover
+CYCLES = """
+CREATE TABLE IF NOT EXISTS cycles (
+    decision TEXT NOT NULL,
+    ran_at TEXT NOT NULL,
+    PRIMARY KEY (decision, ran_at)
+);
+"""
+Coverage = Callable[[Path, list[str]], pd.DataFrame]
+
+
+def _coverage(outdir: Path, days: list[str]) -> pd.DataFrame:
+    return recorder.coverage(outdir, days=days)
 
 
 @dataclass(frozen=True)
@@ -64,10 +86,14 @@ class Product:
         cfg: ProductConfig,
         log_path: Path,
         sender=None,
+        recorder_dir: Path | None = None,
+        coverage: Coverage = _coverage,
     ) -> None:
         self.j, self.cfg, self.log_path, self.sender = journal_conn, cfg, log_path, sender
+        self.recorder_dir, self.coverage = recorder_dir, coverage
         self.db = riskbook.connect(db_path)
         outbox.init(self.db)
+        self.db.executescript(CYCLES)
 
     def post(self, key: str, kind: str, text: str, now: pd.Timestamp) -> bool:
         """Queue a message once per key and append it to the log. It waits for Telegram only if
@@ -162,8 +188,120 @@ class Product:
         return int(self.post(key, "weekly", text, now))
 
     def ops(self, start: pd.Timestamp, end: pd.Timestamp) -> dict:
-        """Operations of a period for the weekly summary (cycles on time, recorder coverage)."""
-        return {}
+        """Operations of [start, end) for the weekly summary, from the book start on: 4h closes
+        whose first cycle ran within ``LIVE_WINDOW``, and recorder days covered >= ``GOOD`` in
+        every stream (the worst stream-day named)."""
+        first = max(start, self.cfg.book_start)
+        grid = pd.date_range(first.ceil("4h"), end, freq="4h", inclusive="left")
+        runs = pd.read_sql_query(
+            "SELECT decision, MIN(ran_at) AS ran_at FROM cycles GROUP BY decision", self.db
+        )
+        lag = pd.to_datetime(runs["ran_at"], utc=True) - pd.to_datetime(runs["decision"], utc=True)
+        on_time = set(pd.to_datetime(runs["decision"], utc=True)[lag <= LIVE_WINDOW])
+        out: dict = {"on_time": sum(t in on_time for t in grid), "expected": len(grid)}
+        days = [
+            d.strftime("%Y-%m-%d")
+            for d in pd.date_range(first.ceil("D"), end, freq="D", inclusive="left")
+        ]
+        if self.recorder_dir is None or not days:
+            return out
+        cov = self.coverage(self.recorder_dir, days)
+        if cov.empty:
+            return out
+        per_day = cov.groupby("day")["coverage"].min()
+        worst = cov.loc[cov["coverage"].idxmin()]
+        out |= {
+            "recorder_good": int((per_day.reindex(days).fillna(0) >= GOOD).sum()),
+            "recorder_days": len(days),
+            "recorder_worst": f"{worst['stream']} {worst['coverage']:.0%} ngày {worst['day']}",
+        }
+        return out
+
+    # ------------------------------------------------------------ operations
+
+    def alert(self, key: str, text: str, now: pd.Timestamp) -> int:
+        return int(self.post(f"alert:{key}", "alert", messages.alert_text(text), now))
+
+    def cycle_failed(self, now: pd.Timestamp, error: BaseException) -> int:
+        """Alert for a failed cycle, once per error type and 6-hour period."""
+        name = type(error).__name__
+        text = (
+            f"chu kỳ lúc {messages.utc(now)} lỗi: {name}: {str(error)[:300]}. Runner thử lại ở "
+            "chu kỳ sau; xem user_data/logs/forward.log"
+        )
+        return self.alert(f"cycle:{name}:{now.floor('6h'):%Y-%m-%dT%H}", text, now)
+
+    def checks(
+        self, now: pd.Timestamp, decision: pd.Timestamp, issues: int = 0, registered: bool = True
+    ) -> int:
+        """Operational alerts of the cycle of ``decision`` run at ``now`` (recorded in
+        ``cycles``); returns the number posted."""
+        n = self._late(now, decision) + self._recorder(now)
+        day = f"{now:%Y-%m-%d}"
+        if issues:
+            text = f"nhật ký lệch bản chạy lại ở {issues} setup (xem forward/reconcile_issues.csv)"
+            n += self.alert(f"reconcile:{day}", text, now)
+        if not registered:
+            text = "fingerprint luật khác bản đã đăng ký: runner không ghi setup mới"
+            n += self.alert(f"fingerprint:{day}", text, now)
+        return n
+
+    def _late(self, now: pd.Timestamp, decision: pd.Timestamp) -> int:
+        """A cycle first run more than ``LIVE_WINDOW`` after its close (a restart after an
+        on-time run is not late); nothing on the very first cycle recorded."""
+        key = decision.isoformat()
+        before = [
+            r[0] for r in self.db.execute("SELECT ran_at FROM cycles WHERE decision = ?", (key,))
+        ]
+        last = self.db.execute("SELECT MAX(ran_at) FROM cycles").fetchone()[0]
+        self.db.execute("INSERT OR IGNORE INTO cycles VALUES (?, ?)", (key, now.isoformat()))
+        self.db.commit()
+        lag = now - decision
+        if last is None or lag <= LIVE_WINDOW:
+            return 0
+        if any(pd.Timestamp(t) - decision <= LIVE_WINDOW for t in before):
+            return 0
+        text = (
+            f"runner chạy chu kỳ {messages.utc(decision)} trễ {int(lag.total_seconds() // 60)} "
+            f"phút (máy ngủ, mất mạng hoặc runner dừng); chu kỳ trước chạy lúc "
+            f"{messages.utc(last)}. Setup của nến bị lỡ được ghi bù, đánh dấu trễ, không vào lệnh"
+        )
+        return self.alert(f"late:{key}", text, now)
+
+    def _recorder(self, now: pd.Timestamp) -> int:
+        """Stale heartbeat (once per 6 hours) and the coverage of yesterday (once per day, only
+        for days starting at or after the book start)."""
+        if self.recorder_dir is None:
+            return 0
+        n = 0
+        beat = self.recorder_dir / ".heartbeat"
+        last = None
+        if beat.exists():
+            text = beat.read_text(encoding="utf-8").strip()
+            last = pd.Timestamp(int(text), unit="ms", tz="UTC") if text.isdigit() else None
+        if last is None or now - last > HEARTBEAT_AGE:
+            seen = (
+                f"nhịp tim cuối {messages.utc(last)}" if last is not None else "không có nhịp tim"
+            )
+            text = f"bộ ghi dữ liệu không chạy ({seen}). Kiểm tra task freqtrade-market-recorder"
+            n += self.alert(f"recorder_down:{now.floor('6h'):%Y-%m-%dT%H}", text, now)
+        day = now.floor("D") - pd.Timedelta(days=1)
+        key = f"coverage:{day:%Y-%m-%d}"
+        if day < self.cfg.book_start or outbox.has(self.db, f"alert:{key}"):
+            return n
+        cov = self.coverage(self.recorder_dir, [f"{day:%Y-%m-%d}"])
+        low = cov[cov["coverage"] < GOOD] if len(cov) else cov
+        if len(low):
+            streams = ", ".join(f"{r.stream} {r.coverage:.0%}" for r in low.itertuples())
+            text = f"bộ ghi thiếu dữ liệu ngày {day:%Y-%m-%d}: {streams} (cần ≥ 90%)"
+            n += self.alert(key, text, now)
+        return n
+
+    def flush(self, now: pd.Timestamp, sleep: Callable[[float], None] = time.sleep) -> dict:
+        """Deliver the outbox through Telegram (nothing without a sender)."""
+        if self.sender is None:
+            return {}
+        return outbox.flush(self.db, self.sender, now, sleep=sleep)
 
     def status(self) -> str:
         """Book summary for ``run_forward.py --status``."""

@@ -329,20 +329,23 @@ def union_minutes(intervals: list[Interval]) -> float:
     return total / 60_000
 
 
-def coverage(outdir: Path, at_ms: int | None = None) -> pd.DataFrame:
+def coverage(outdir: Path, at_ms: int | None = None, days: list[str] | None = None) -> pd.DataFrame:
     """One row per stream and UTC day: rows, distinct snapshots against the clock grid
     (``EVERY``), hours with data, logged gap minutes, size and compaction state. ``coverage`` is
     the share of the day (up to ``at_ms`` today) that was recorded: snapshots / expected for
     snapshot streams, 1 - missing minutes / day for liquidations (an event stream), where missing
-    is the union of the logged gaps and, on the first day, the time before the first row."""
+    is the union of the logged gaps and, on the stream's first day, the time before the first
+    row. ``days``: only these UTC days (``YYYY-MM-DD``) are read."""
     at_ms = at_ms if at_ms is not None else now_ms()
     today = pd.Timestamp(at_ms, unit="ms", tz="UTC").strftime("%Y-%m-%d")
     gaps = gap_intervals(outdir)
     rows = []
     streams = sorted(p for p in outdir.iterdir() if p.is_dir() and p.name != "meta")
     for stream_dir in streams:
-        days = {p.stem if p.suffix == ".parquet" else p.name for p in stream_dir.iterdir()}
-        for i, day in enumerate(sorted(d for d in days if len(d) == 10)):
+        found = {p.stem if p.suffix == ".parquet" else p.name for p in stream_dir.iterdir()}
+        for i, day in enumerate(sorted(d for d in found if len(d) == 10)):
+            if days is not None and day not in days:
+                continue
             times, state = _day_times(stream_dir, day)
             start = int(pd.Timestamp(day, tz="UTC").timestamp() * 1000)
             span = min(at_ms, start + DAY_MS) - start  # today: the part of the day elapsed

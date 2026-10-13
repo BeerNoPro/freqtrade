@@ -64,11 +64,16 @@ def test_close_trend_leaves_a_setup_without_exit_price_pending(tmp_path: Path) -
     assert runner.no_price == {1: day + pd.Timedelta(days=3)}
 
 
-def test_a_failing_product_step_never_raises(tmp_path: Path) -> None:
+def test_a_failing_product_layer_never_raises(tmp_path: Path) -> None:
     class Broken:
         def step(self, now, no_price):
             raise RuntimeError("boom")
 
+        def cycle_failed(self, now, error):
+            raise RuntimeError("boom")
+
     runner = _runner(tmp_path)
     runner.product = Broken()
-    runner.product_step(pd.Timestamp("2026-10-13 00:01", tz="UTC"))  # logged, not raised
+    now = pd.Timestamp("2026-10-13 00:01", tz="UTC")
+    runner.product_step(now)  # logged, not raised
+    runner.cycle_failed(now, ValueError("x"))
