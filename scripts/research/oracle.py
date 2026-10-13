@@ -6,8 +6,9 @@ store directly. Specification, in the engine's own terms:
 
 - Store reads: a candle trades when its quote volume is > 0. Candles after the last one that
   traded (among those dated before ``end``) are dropped: Binance keeps serving flat zero-volume
-  candles, and funding prints, for delisted contracts. Funding prints after the close of the last
-  traded candle (4h candles when stored before ``end``, else daily) are dropped. Idle candles
+  candles, and funding prints, for delisted contracts. Funding prints before the open of the first
+  traded daily candle (an older contract on a reused ticker) or after the close of the last traded
+  candle (4h candles when stored before ``end``, else daily) are dropped. Idle candles
   inside the series stay in the price path, but an idle day is not a close for the universe and
   an idle 4h bar is not in the universe.
 - Point-in-time universe: a coin is eligible on day t with ``min_history`` consecutive daily
@@ -342,7 +343,7 @@ def read(
 ) -> pd.DataFrame | None:
     """One stored file, rows dated strictly before ``end``, duplicates dropped, sorted; then
     (unless ``raw``) the store's fake rows removed: candles after the last one with a trade, and
-    funding prints after the close of the coin's last trade (``last_trade_close``)."""
+    funding prints (any ``funding*`` kind) outside the coin's trading span (``trade_span``)."""
     path = store / kind / f"{symbol}.parquet"
     if not path.exists():
         return None
@@ -354,24 +355,35 @@ def read(
         trades = np.flatnonzero(df["quote_volume"].to_numpy(dtype=float) > 0)
         keep = trades[-1] + 1 if trades.size else 0
         return df.iloc[:keep].reset_index(drop=True)
-    if kind == "funding":
-        last = last_trade_close(store, symbol, end)
-        if last is not None:
-            return df[df["date"] <= last].reset_index(drop=True)  # NaT drops every print
+    if kind.startswith("funding"):
+        span = trade_span(store, symbol, end)
+        if span is not None:  # NaT bounds (no trade at all) keep no print
+            first, last = span
+            return df[(df["date"] >= first) & (df["date"] <= last)].reset_index(drop=True)
     return df
 
 
-def last_trade_close(store: Path, symbol: str, end: pd.Timestamp) -> pd.Timestamp | None:
-    """Close time of the coin's last candle with a trade before ``end``, from its 4h candles when
-    some are stored before ``end``, else from its daily ones. NaT when none of them traded, None
-    without any candle (nothing to judge funding by)."""
-    for kind, bar in (("klines_4h", BAR_4H), ("klines_1d", DAY)):
+def trade_span(
+    store: Path, symbol: str, end: pd.Timestamp
+) -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    """(open of the coin's first candle with a trade, close of its last one) before ``end``: the
+    first from the daily candles (the 4h ones may start later), the last from the 4h candles; each
+    from the other interval when one has no candle before ``end``. (NaT, NaT) when none traded,
+    None without any candle (nothing to judge funding by). Funding outside it belongs to an older
+    contract on the ticker or follows the delisting."""
+    found = {}
+    for kind, bar in (("klines_1d", DAY), ("klines_4h", BAR_4H)):
         stored = read(store, kind, symbol, end, raw=True)
-        if stored is None or stored.empty:
-            continue
-        traded = stored[stored["quote_volume"] > 0]
-        return traded["date"].iloc[-1] + bar if len(traded) else pd.NaT
-    return None
+        if stored is not None and len(stored):
+            traded = stored[stored["quote_volume"] > 0]
+            if traded.empty:
+                return pd.NaT, pd.NaT
+            found[kind] = (traded["date"].iloc[0], traded["date"].iloc[-1] + bar)
+    if not found:
+        return None
+    first = found["klines_1d"][0] if "klines_1d" in found else found["klines_4h"][0]
+    last = found["klines_4h"][1] if "klines_4h" in found else found["klines_1d"][1]
+    return first, last
 
 
 def daily_panel(store: Path, symbols: list[str], field: str, end: pd.Timestamp) -> pd.DataFrame:

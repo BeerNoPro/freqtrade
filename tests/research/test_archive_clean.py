@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
-from mce.archive import drop_dead_tail, load_wide, read_store_file, traded, trading_end
+from mce.archive import drop_dead_tail, load_wide, read_store_file, traded, trading_span
 
 
 UTC = "UTC"
@@ -69,16 +69,51 @@ def store(tmp_path: Path) -> Path:
     _write(tmp_path, "funding", "ONLY1DUSDT", _funding("2026-06-20", 12))
     # NOKLINES: funding without any candle file is left as stored
     _write(tmp_path, "funding", "NOKLINESUSDT", _funding("2026-06-20", 3))
+    # REUSED: the candles start 06-22 (a reused ticker), the prints from 06-20 (the old contract's
+    # included, as the funding endpoint serves them), also under a second funding kind
+    bars = _klines("2026-06-22", [0.0] + [1.0] * 11, freq="4h")  # 00:00 idle, 04:00 first trade
+    _write(tmp_path, "klines_4h", "REUSEDUSDT", bars)
+    _write(tmp_path, "klines_1d", "REUSEDUSDT", _klines("2026-06-22", [5, 6]))
+    for kind in ("funding", "funding_all"):
+        _write(tmp_path, kind, "REUSEDUSDT", _funding("2026-06-20", 12))  # to 06-23 16:00
+    # LATE4H: trades from 06-20 (daily candles) but its 4h candles are stored from 06-22 only
+    # (the store keeps 4h from 100 days before a coin first enters the top 25): no print is lost
+    _write(tmp_path, "klines_1d", "LATE4HUSDT", _klines("2026-06-20", [5, 6, 7, 8]))
+    _write(tmp_path, "klines_4h", "LATE4HUSDT", _klines("2026-06-22", [1.0] * 12, freq="4h"))
+    _write(tmp_path, "funding", "LATE4HUSDT", _funding("2026-06-20", 12))
     return tmp_path
 
 
-def test_trading_end_prefers_the_4h_candles(store: Path) -> None:
-    assert trading_end(store, "DEADUSDT") == pd.Timestamp("2026-06-23 12:00", tz=UTC)
-    assert trading_end(store, "ONLY1DUSDT") == pd.Timestamp("2026-06-22", tz=UTC)
-    assert trading_end(store, "NOKLINESUSDT") is None
+def test_trading_span_starts_on_daily_and_ends_on_4h_candles(store: Path) -> None:
+    def span(symbol: str, end: pd.Timestamp | None = None):
+        return trading_span(store, symbol, end)
+
+    assert span("DEADUSDT") == (
+        pd.Timestamp("2026-06-20", tz=UTC),
+        pd.Timestamp("2026-06-23 12:00", tz=UTC),
+    )
+    assert span("ONLY1DUSDT")[1] == pd.Timestamp("2026-06-22", tz=UTC)
+    assert span("NOKLINESUSDT") is None
     # with data cut before 06-21 06:00 the last trade seen is the 04:00 candle
     cut = pd.Timestamp("2026-06-21 06:00", tz=UTC)
-    assert trading_end(store, "DEADUSDT", cut) == pd.Timestamp("2026-06-21 08:00", tz=UTC)
+    assert span("DEADUSDT", cut)[1] == pd.Timestamp("2026-06-21 08:00", tz=UTC)
+    # the start comes from the daily candles (stored for every coin from the store's start), the
+    # end from the 4h ones (finer) when stored
+    assert span("REUSEDUSDT")[0] == pd.Timestamp("2026-06-22", tz=UTC)
+    assert span("LATE4HUSDT") == (
+        pd.Timestamp("2026-06-20", tz=UTC),
+        pd.Timestamp("2026-06-24", tz=UTC),
+    )
+
+
+def test_funding_before_the_first_trade_is_dropped(store: Path) -> None:
+    for kind in ("funding", "funding_all"):
+        f = read_store_file(store, kind, "REUSEDUSDT")
+        # the old contract's prints of 06-20 and 06-21 go; from 06-22 00:00 they stay
+        assert f["date"].min() == pd.Timestamp("2026-06-22", tz=UTC), kind
+        assert f["date"].max() == pd.Timestamp("2026-06-23 16:00", tz=UTC), kind
+        assert len(read_store_file(store, kind, "REUSEDUSDT", raw=True)) == 12
+    assert len(read_store_file(store, "funding", "LATE4HUSDT")) == 12  # nothing lost
 
 
 def test_clean_reads_drop_fake_candles_and_prints(store: Path) -> None:

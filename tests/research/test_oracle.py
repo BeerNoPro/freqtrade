@@ -297,6 +297,20 @@ def test_read_drops_the_fake_tail_and_the_prints_after_the_last_trade(tmp_path: 
     # Y trades on 06-20 and 06-21 (daily candles only): last close 06-22 00:00, its print stays
     assert read(tmp_path, "funding", "Y", end)["date"].max() == _t("2026-06-22")
     assert len(read(tmp_path, "funding", "Y", end, raw=True)) == 12
+    # Z: a reused ticker whose 4h candles start 06-22 (first trade at 04:00) while the funding
+    # endpoint also served the old contract's prints from 06-20; kinds funding_* alike
+    z_bars = pd.date_range("2026-06-22", periods=12, freq="4h", tz="UTC")
+    _save(tmp_path, "klines_4h", "Z", _candles(z_bars, [0.0] + [1.0] * 11))
+    for kind in ("funding", "funding_all"):
+        _save(tmp_path, kind, "Z", pd.DataFrame({"date": prints[:12], "funding_rate": 1e-4}))
+        z = read(tmp_path, kind, "Z", end)
+        assert z["date"].min() == _t("2026-06-22 08:00") and len(z) == 5  # no daily: 4h start
+    # W trades from 06-20 (daily) but its 4h candles start 06-22: the daily start rules, every
+    # one of its 12 prints (06-20 00:00 .. 06-23 16:00) is inside 06-20 00:00 .. 06-24 00:00
+    _save(tmp_path, "klines_1d", "W", _candles(days[:4], [5, 6, 7, 8]))
+    _save(tmp_path, "klines_4h", "W", _candles(z_bars, [1.0] * 12))
+    _save(tmp_path, "funding", "W", pd.DataFrame({"date": prints[:12], "funding_rate": 1e-4}))
+    assert len(read(tmp_path, "funding", "W", end)) == 12
 
 
 def test_universe_ignores_fake_candles_and_halted_days(tmp_path: Path) -> None:

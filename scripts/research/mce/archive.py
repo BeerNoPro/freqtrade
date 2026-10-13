@@ -301,17 +301,30 @@ def drop_dead_tail(k: pd.DataFrame) -> pd.DataFrame:
     return k.iloc[: hit[-1] + 1 if hit.size else 0].reset_index(drop=True)
 
 
-def trading_end(outdir: Path, symbol: str, end: pd.Timestamp | None = None) -> pd.Timestamp | None:
-    """Close time of the coin's last candle with a trade before ``end``: from its 4h candles when
-    some are stored before ``end``, else from its daily ones. NaT when none of them traded, None
-    without any candle (nothing to judge by)."""
-    for interval in ("4h", "1d"):
+def trading_span(
+    outdir: Path, symbol: str, end: pd.Timestamp | None = None
+) -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    """(open of the coin's first candle with a trade, close of its last one) before ``end``. The
+    start comes from the daily candles (kept for every candidate from the store's start; the 4h
+    ones only from shortly before a coin first enters the universe), the end from the 4h candles
+    (finer); each falls back on the other interval when it has no candle before ``end``. (NaT,
+    NaT) when none traded, None without any candle (nothing to judge by). Funding outside it
+    belongs to an older contract on the ticker (the endpoint serves it) or follows the delisting."""
+    bounds = {}
+    for interval in ("1d", "4h"):
         k = read_store_file(outdir, f"klines_{interval}", symbol, end, raw=True)
         if k is None or k.empty:
             continue
-        k = drop_dead_tail(k)
-        return k["date"].iloc[-1] + pd.Timedelta(INTERVAL_MS[interval], "ms") if len(k) else pd.NaT
-    return None
+        hit = np.flatnonzero(traded(k).to_numpy())
+        if not hit.size:
+            return pd.NaT, pd.NaT
+        bar = pd.Timedelta(INTERVAL_MS[interval], "ms")
+        bounds[interval] = (k["date"].iloc[hit[0]], k["date"].iloc[hit[-1]] + bar)
+    if not bounds:
+        return None
+    start = bounds.get("1d") or bounds["4h"]
+    stop = bounds.get("4h") or bounds["1d"]
+    return start[0], stop[1]
 
 
 def read_store_file(
@@ -319,8 +332,8 @@ def read_store_file(
 ) -> pd.DataFrame | None:
     """One stored file, rows dated strictly before ``end`` (every row without it), sorted; unless
     ``raw``, without the exchange's fake rows: candles after the last one with a trade
-    (``drop_dead_tail``) and funding prints after the coin's ``trading_end``. Every research read
-    goes through it; the downloads and the audit read the raw files."""
+    (``drop_dead_tail``) and prints of any ``funding*`` kind outside the coin's ``trading_span``.
+    Every research read goes through it; the downloads and the audit read the raw files."""
     path = _path(outdir, kind, symbol)
     if not path.exists():
         return None
@@ -332,10 +345,10 @@ def read_store_file(
         return df
     if kind.startswith("klines_"):
         return drop_dead_tail(df)
-    if kind == "funding":
-        last = trading_end(outdir, symbol, end)
-        if last is not None:  # NaT (no trade at all) keeps no print
-            df = df[df["date"] <= last].reset_index(drop=True)
+    if kind.startswith("funding"):
+        span = trading_span(outdir, symbol, end)
+        if span is not None:  # NaT bounds (no trade at all) keep no print
+            df = df[(df["date"] >= span[0]) & (df["date"] <= span[1])].reset_index(drop=True)
     return df
 
 
