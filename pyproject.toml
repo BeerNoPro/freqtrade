@@ -157,7 +157,7 @@ module = [
 disable_error_code = "attr-defined"
 
 [tool.pyright]
-include = ["freqtrade"]
+include = ["freqtrade", "scripts", "user_data/research/*.py", "tests/research"]
 exclude = [
   "**/__pycache__",
   "build/*",
@@ -165,6 +165,11 @@ exclude = [
 ignore = ["freqtrade/vendor/**"]
 pythonPlatform = "All"
 pythonVersion = "3.11"
+# Resolve packages from the project venv; mce runs with PYTHONPATH=scripts/research and the
+# user_data/research scripts import each other by module name.
+venvPath = "."
+venv = ".venv"
+extraPaths = ["scripts/research", "user_data/research"]
 
 typeCheckingMode = "off"
 # analyzeUnannotatedFunctions = false
