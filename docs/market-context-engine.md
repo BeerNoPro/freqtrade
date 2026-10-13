@@ -23,8 +23,9 @@ kho point-in-time (archive, universe, pit, live) ──► features ──► re
 bộ ghi thời gian thực (recorder): dữ liệu sàn không lưu lịch sử         event study IS (một lần)
                                                                                     │
                                   kiểm định tiến: forward (setup đầy đủ) ──► journal (ghi trước, chấm sau)
-                                                                                    │ đạt mốc
-                                                                      Telegram (nhãn thử nghiệm → thật)
+                                                                                    │
+                                         lớp sản phẩm: riskbook (ngân sách rủi ro) ──► tin nhắn ──► Telegram
+                                                                    (nhãn thử nghiệm, bỏ khi luật đạt mốc)
 ```
 
 | Module | Vai trò |
@@ -49,6 +50,10 @@ bộ ghi thời gian thực (recorder): dữ liệu sàn không lưu lịch sử
 | `intraday.py` | Nến 1 phút quanh sự kiện (giờ thanh toán funding…) từ file ngày của data.binance.vision, chỉ tải ngày có sự kiện, lưu loại `klines_1m_events`; đọc file ngày `aggTrades` (lệnh khớp có chiều taker) và `bookDepth` (độ sâu ±0,2–5% mỗi 30 giây) |
 | `price_action.py` | Cấu trúc giá trên nến đã đóng (nhân quả): đỉnh/đáy fractal, phá cấu trúc (mức flip, điểm dừng ở đỉnh/đáy đối diện), lần hồi về vùng flip đầu tiên, nến xác nhận (từ chối giá / nhấn chìm); `score_stops` chấm SL theo cấu trúc, TP theo R, thoát theo thời gian |
 | `costs.py` | Chi phí giao dịch theo coin, thời điểm và cỡ lệnh: phí (VIP0 mặc định), nửa chênh lệch giá dựng lại từ lệnh khớp, tác động đi qua sổ lệnh `bookDepth`, funding; khứ hồi theo bp và R. Kiểm chứng với giá mua/bán và sổ lệnh thật của bộ ghi (`user_data/research/cost_check_v1.py`) |
+| `riskbook.py` | Lớp sản phẩm: ngân sách rủi ro danh mục (một cược cho setup cùng nến cùng chiều, suất trend, trần theo chiều và tổng), sổ `allocations` + `closures` chỉ ghi thêm, lãi/lỗ theo % vốn. Chỉ đọc nhật ký |
+| `messages.py` | Chữ của tin setup, đóng lệnh, tổng kết tuần, cảnh báo; dòng "Kỳ vọng" từ bằng chứng của luật và tiến độ mốc |
+| `outbox.py` | Hàng đợi tin (chống trùng, gửi lại, hết hạn) và gửi Telegram chỉ một chiều (`sendMessage`), che token trong log |
+| `product.py` | Một bước của lớp sản phẩm sau mỗi chu kỳ runner: phân bổ setup mới, đóng vị thế, tin nhắn, tổng kết tuần, kiểm tra vận hành |
 
 Script: `download_pit_universe.py` (kho point-in-time; `--plan-only` ước lượng khối lượng tải), `record_market.py` +
 `schedule_recorder.ps1` (bộ ghi), `recorder_coverage.py` (độ phủ), `run_forward.py` + `schedule_forward.ps1` (runner
@@ -150,8 +155,11 @@ Windows tương ứng bằng `-Remove`). Chép về: `rsync -av <vps>:<repo>/use
 - Bảng `setups`: chiến lược, fingerprint, nguồn, cặp, nến quyết định, chiều, giá vào, SL, TP, số nến tối đa, khối
   lượng, notional, đòn bẩy tối đa, chi phí theo R, trạng thái (`setup` / `skipped_cost`), giá mua/bán và trượt giá lúc
   ghi, lý do. Bảng `outcomes`: lý do thoát, giá thoát, R gộp, phí, funding, R ròng.
-- Tin nhắn sản phẩm ghi ra `forward/messages.log` (nhãn "THỬ NGHIỆM - chưa kiểm định"); chỉ gửi Telegram khi người
-  dùng duyệt. Nhật ký và độ phủ bộ ghi là nguồn dữ liệu cho màn hình UI sau này.
+- Lớp sản phẩm (sau mỗi chu kỳ, lỗi của nó không chặn nhật ký): ngân sách rủi ro, tin setup/đóng lệnh/tổng kết tuần,
+  cảnh báo vận hành; sổ riêng `forward/product.sqlite`, cấu hình riêng `user_data/research/product.json`, mọi tin ghi
+  `forward/messages.log`, Telegram chỉ gửi khi bật. Thiết kế: [signal-bot-workflow.md](signal-bot-workflow.md) mục
+  3–7. `--preview DIR` chạy lớp sản phẩm trên bản sao nhật ký (không mạng). Nhật ký, sổ và độ phủ bộ ghi là nguồn dữ
+  liệu cho màn hình UI sau này.
 
 ## 6. Rủi ro thống kê → biện pháp
 | Rủi ro | Biện pháp |
