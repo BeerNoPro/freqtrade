@@ -5,12 +5,17 @@ writes new ones to the journal before any outcome exists, and scores the ones wh
 known. Daily: the trend setups and exits (00:00 UTC close) and a full store sync (01:30 UTC,
 ``download_pit_universe.py``). Closes missed while the machine slept are caught up and marked
 ``live_late``. Setups are not recorded when the rules' fingerprint differs from the registered
-one. Telegram is off: messages go to ``forward/messages.log`` with the label of an untested
-experiment. One instance at a time.
+one. One instance at a time.
+
+After each cycle the product layer (``mce.product``, configured by ``user_data/research/
+product.json``) updates the risk book from the journal and writes the setup, close and weekly
+messages to ``forward/messages.log``. Its failures are logged and never stop the journal.
 
     .venv/Scripts/python.exe scripts/research/run_forward.py            # until stopped
     .venv/Scripts/python.exe scripts/research/run_forward.py --once     # one cycle now
-    .venv/Scripts/python.exe scripts/research/run_forward.py --status   # journal summary
+    .venv/Scripts/python.exe scripts/research/run_forward.py --status   # journal and book
+    .venv/Scripts/python.exe scripts/research/run_forward.py --preview DIR  # product layer on a
+        journal copy, no network ([--book-start ISO] [--now ISO])
 
 Windows: ``scripts/research/schedule_forward.ps1``. VPS: service ``forward`` in docker-compose.yml.
 """
@@ -23,6 +28,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import ModuleType
@@ -36,6 +42,7 @@ from mce.forward import make_setup
 from mce.labels import funding_between
 from mce.live import quote, sync_open_interest, with_retry
 from mce.pit import daily_members, read_store
+from mce.product import Product, ProductConfig
 from mce.universe import is_candidate
 
 
@@ -47,7 +54,7 @@ DECISION_DELAY = pd.Timedelta(seconds=90)
 LIVE_WINDOW = pd.Timedelta(minutes=15)  # later than this after the close -> live_late
 FULL_SYNC_AT = pd.Timedelta(hours=1, minutes=30)  # daily, after the archive publishes
 WARMUP = pd.Timedelta(days=100)
-LABEL = "THỬ NGHIỆM - chưa kiểm định, không giao dịch theo"
+PRODUCT_CONFIG = RESEARCH / "product.json"
 logger = logging.getLogger("forward")
 
 
@@ -56,30 +63,16 @@ def load_spec(name: str) -> ModuleType:
     return importlib.import_module(name)
 
 
-def message(s: journal.Setup) -> str:
-    """Product message of a setup (Telegram format, sent only once the user approves)."""
-    side = "LONG" if s.side > 0 else "SHORT"
-    pct = (s.stop / s.entry - 1) * 100
-    exit_rule = (
-        f"TP {s.target:.6g} ({(s.target / s.entry - 1) * 100:+.1f}%), thoát sau "
-        f"{int(s.max_bars) * 4}h nếu chưa chạm"
-        if s.target is not None and s.max_bars is not None
-        else "không TP, thoát theo trailing stop của mô hình"
-    )
-    skipped = " [BỎ QUA: chi phí quá lớn so với 1R]" if s.status == "skipped_cost" else ""
-    return "\n".join(
-        [
-            f"{LABEL}{skipped}",
-            f"{side} {s.pair} ({s.strategy}) - nến {s.timeframe} đóng {s.decided_at}",
-            f"Vào: {s.entry:.6g} (giá đóng nến) · SL {s.stop:.6g} ({pct:+.1f}%) · {exit_rule}",
-            (
-                f"Khối lượng: {s.qty:.6g} ({s.notional:,.0f} USDT) cho rủi ro 1% vốn mẫu · "
-                f"đòn bẩy tối đa {s.leverage_max}x isolated"
-            ),
-            f"Chi phí ước tính {s.cost_r:.2f}R · Kỳ vọng: chưa kiểm định",
-            f"Lý do: {s.reason}",
-        ]
-    )
+def load_product(conn: sqlite3.Connection, out: Path = OUT, **kw) -> Product | None:
+    """The product layer on journal ``conn`` (book and outbox in ``out/product.sqlite``), or None
+    without ``product.json``."""
+    if not PRODUCT_CONFIG.exists():
+        logger.warning("no %s: product layer off", PRODUCT_CONFIG)
+        return None
+    cfg = ProductConfig.load(PRODUCT_CONFIG)
+    if "book_start" in kw:
+        cfg = replace(cfg, book_start=kw.pop("book_start"))
+    return Product(conn, out / "product.sqlite", cfg, out / "messages.log", **kw)
 
 
 class Runner:
@@ -89,6 +82,10 @@ class Runner:
         self.ex = exchange
         self.conn = journal.connect(OUT / "journal.sqlite")
         self.fee = spec.POLICY.round_trip_fee
+        self.product: Product | None = None
+        self.no_price: dict[
+            int, pd.Timestamp
+        ] = {}  # trend setups closed by the rules without price
 
     # ------------------------------------------------------------ store
 
@@ -182,10 +179,10 @@ class Runner:
             except ccxt.BaseError as e:
                 logger.warning("quote %s failed: %r", s.pair, e)
         if journal.record_setup(self.conn, s):
-            text = message(s)
-            logger.info("setup recorded:\n%s", text)
-            with (OUT / "messages.log").open("a", encoding="utf-8", newline="\n") as f:
-                f.write(f"[{now.isoformat(timespec='seconds')}] {s.source}\n{text}\n\n")
+            side = "long" if s.side > 0 else "short"
+            logger.info(
+                "setup recorded: %s %s %s %s (%s)", s.strategy, side, s.pair, s.status, s.source
+            )
 
     def record_new(self, rows: pd.DataFrame, bar: pd.Timedelta, now: pd.Timestamp) -> int:
         if rows.empty:
@@ -230,10 +227,11 @@ class Runner:
             if hit.empty:
                 continue
             t = hit.iloc[0]
+            exit_close = pd.Timestamp(t["exit_date"]) + DAY
             if pd.isna(t["exit_price"]):  # the coin stopped trading: no exit price, no outcome
                 logger.info("trend setup %s %s: trading ended, no outcome", s.pair, s.candle_date)
+                self.no_price[int(s.id)] = exit_close
                 continue
-            exit_close = pd.Timestamp(t["exit_date"]) + DAY
             paid = self.funding(s.pair, pd.Timestamp(s.decided_at), exit_close)
             o = journal.outcome(
                 s.side,
@@ -267,12 +265,24 @@ class Runner:
         closed = self.close_trend(trades)
         logger.info("scored %d barrier setups, closed %d trend setups", scored, closed)
         self.reconcile(pd.concat([rows4, trades], ignore_index=True))
+        self.product_step(now)
 
-    def reconcile(self, replay: pd.DataFrame) -> None:
-        """Every journal setup against the same rules replayed on the store as it is now."""
+    def product_step(self, now: pd.Timestamp) -> None:
+        """The product layer after the journal is up to date; a failure is logged, never raised."""
+        if self.product is None:
+            return
+        try:
+            done = self.product.step(now, self.no_price)
+            logger.info("product: %s", done)
+        except Exception:
+            logger.exception("product step failed")
+
+    def reconcile(self, replay: pd.DataFrame) -> int:
+        """Every journal setup against the same rules replayed on the store as it is now;
+        returns the number of disagreements."""
         live = journal.setups(self.conn)
         if live.empty or replay.empty:
-            return
+            return 0
         first = {"4h": self.spec.LIVE_START, "1d": self.spec.LIVE_START - DAY}
         keep = [
             pd.Timestamp(d) >= first[tf]
@@ -286,6 +296,7 @@ class Runner:
             issues.to_csv(OUT / "reconcile_issues.csv", index=False)
         else:
             logger.info("live vs replay: %d setups agree", len(live))
+        return len(issues)
 
 
 def status() -> None:
@@ -298,6 +309,8 @@ def status() -> None:
     if len(sc):
         g = sc.groupby("strategy")["net_r"]
         print(pd.DataFrame({"n": g.size(), "mean_net_r": g.mean(), "sum_net_r": g.sum()}))
+    if (OUT / "product.sqlite").exists() and (product := load_product(conn)) is not None:
+        print(product.status())
 
 
 def copy_journal(dest: Path) -> sqlite3.Connection:
@@ -311,18 +324,21 @@ def copy_journal(dest: Path) -> sqlite3.Connection:
 
 
 def preview(out: Path, book_start: pd.Timestamp, now: pd.Timestamp) -> None:
-    """The product layer on a copy of the journal, without network or Telegram: a fresh book in
-    ``out`` and what it decided."""
-    path = out / "product.sqlite"
-    path.unlink(missing_ok=True)
+    """The product layer on a copy of the journal, without network or Telegram: a fresh book,
+    outbox and ``messages.log`` in ``out``; prints the messages and the book."""
+    for name in ("product.sqlite", "messages.log"):
+        (out / name).unlink(missing_ok=True)
     conn = copy_journal(out / "journal.sqlite")
-    book = riskbook.connect(path)
-    allocs, closes = riskbook.update(
-        book, journal.setups(conn), journal.scored(conn), riskbook.RiskPolicy(), book_start, now
+    product = load_product(conn, out, book_start=book_start) or Product(
+        conn,
+        out / "product.sqlite",
+        ProductConfig(riskbook.RiskPolicy(), book_start, {}),
+        out / "messages.log",
     )
-    cols = ["setup_id", "decided_at", "strategy", "pair", "side", "state", "bet_size", "risk"]
-    print(allocs[[*cols, "open_long", "open_short"]].to_string(index=False))
-    print(closes.to_string(index=False) if len(closes) else "no closure")
+    print(product.step(now))
+    log = out / "messages.log"
+    print(log.read_text(encoding="utf-8") if log.exists() else "no message")
+    print(product.status())
 
 
 def wait_until(t: pd.Timestamp) -> None:
@@ -334,7 +350,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     parser.add_argument("--spec", default="forward_v1", help="rules module in user_data/research")
     parser.add_argument("--once", action="store_true", help="run one cycle now and exit")
-    parser.add_argument("--status", action="store_true", help="print the journal summary")
+    parser.add_argument("--status", action="store_true", help="print the journal and the book")
     parser.add_argument("--log", type=Path, default=REPO / "user_data" / "logs" / "forward.log")
     parser.add_argument("--preview", type=Path, help="run the product layer on a journal copy")
     parser.add_argument("--book-start", help="preview: first decision time of the book (ISO)")
@@ -369,6 +385,7 @@ def main() -> None:
         runner = Runner(
             load_spec(args.spec), ccxt.binanceusdm({"enableRateLimit": True, "timeout": 30_000})
         )
+        runner.product = load_product(runner.conn)
         while True:
             now = pd.Timestamp.now(tz="UTC")
             try:

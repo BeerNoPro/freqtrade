@@ -1,4 +1,4 @@
-"""Forward runner: product message format and trend exits (no network)."""
+"""Forward runner: trend exits and the product step (no network)."""
 
 from pathlib import Path
 
@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from mce import journal
 from mce.journal import Setup
-from run_forward import LABEL, Runner, message
+from run_forward import Runner
 
 
 def _setup(**kw) -> Setup:
@@ -34,26 +34,19 @@ def _setup(**kw) -> Setup:
     return Setup(**{**base, **kw})
 
 
-def test_message_carries_label_levels_size_and_reason() -> None:
-    text = message(_setup())
-    assert text.startswith(LABEL) and "BỎ QUA" not in text
-    assert "LONG SOLUSDT" in text and "SL 98 (-2.0%)" in text and "TP 104 (+4.0%)" in text
-    assert "thoát sau 12h" in text and "5,000 USDT" in text and "5x isolated" in text
-    assert "Kỳ vọng: chưa kiểm định" in text and text.endswith("Lý do: Mua sau thanh lý")
-
-
-def test_message_of_a_trend_setup_and_a_skipped_one() -> None:
-    trend = message(_setup(side=-1, stop=110.0, target=None, max_bars=None, timeframe="1d"))
-    assert "SHORT SOLUSDT" in trend and "trailing stop" in trend and "SL 110 (+10.0%)" in trend
-    assert "BỎ QUA" in message(_setup(status="skipped_cost", cost_r=0.3))
+def _runner(tmp_path: Path) -> Runner:
+    runner = Runner.__new__(Runner)
+    runner.conn = journal.connect(tmp_path / "journal.sqlite")
+    runner.pit, runner.fee = tmp_path / "pit", 0.0012
+    runner.product, runner.no_price = None, {}
+    return runner
 
 
 def test_close_trend_leaves_a_setup_without_exit_price_pending(tmp_path: Path) -> None:
     """A coin that stops trading while a trend setup is open has no exit price (the store drops
-    its fake candles): the setup stays without outcome instead of failing every cycle."""
-    runner = Runner.__new__(Runner)
-    runner.conn = journal.connect(tmp_path / "journal.sqlite")
-    runner.pit, runner.fee = tmp_path / "pit", 0.0012
+    its fake candles): the setup stays without outcome instead of failing every cycle, and the
+    product layer is told to close it without a price."""
+    runner = _runner(tmp_path)
     trend = {"timeframe": "1d", "target": None, "max_bars": None, "side": -1, "stop": 110.0}
     for pair in ("DEADUSDT", "LIVEUSDT"):
         journal.record_setup(runner.conn, _setup(**trend, pair=pair))
@@ -68,3 +61,14 @@ def test_close_trend_leaves_a_setup_without_exit_price_pending(tmp_path: Path) -
     )
     assert runner.close_trend(trades) == 1
     assert journal.pending(runner.conn)["pair"].tolist() == ["DEADUSDT"]
+    assert runner.no_price == {1: day + pd.Timedelta(days=3)}
+
+
+def test_a_failing_product_step_never_raises(tmp_path: Path) -> None:
+    class Broken:
+        def step(self, now, no_price):
+            raise RuntimeError("boom")
+
+    runner = _runner(tmp_path)
+    runner.product = Broken()
+    runner.product_step(pd.Timestamp("2026-10-13 00:01", tz="UTC"))  # logged, not raised
