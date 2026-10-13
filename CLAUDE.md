@@ -24,6 +24,7 @@ thái trước khi đề xuất hay code bất kỳ ý tưởng nào. Không là
 |---|---|
 | [docs/signal-bot-workflow.md](docs/signal-bot-workflow.md) | **Thiết kế bot**: quyết định đã chốt, workflow, tin nhắn, ánh xạ Freqtrade, lộ trình |
 | [docs/quant-playbook.md](docs/quant-playbook.md) | **Các họ mô hình có bằng chứng** (trend, vol-target, carry...), chuẩn kiểm định, bài học |
+| [docs/research-handbook.md](docs/research-handbook.md) | **Sổ tay**: mọi hook/mô hình đang chạy và đã loại, cách kiểm định, thuật ngữ quant, bài học, câu hỏi hay gặp |
 | [docs/market-context-engine.md](docs/market-context-engine.md) | **Bộ máy nghiên cứu**: kho point-in-time, event study, kiểm định tiến + nhật ký, bộ ghi dữ liệu, VPS |
 | [docs/lifecycle.md](docs/lifecycle.md) | Logic chạy của engine (đã đối chiếu code) |
 | [docs/structure.md](docs/structure.md) | Bản đồ source, luồng → file |
