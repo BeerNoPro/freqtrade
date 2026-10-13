@@ -59,6 +59,7 @@ DECISION_DELAY = pd.Timedelta(seconds=90)
 LIVE_WINDOW = pd.Timedelta(minutes=15)  # later than this after the close -> live_late
 FULL_SYNC_AT = pd.Timedelta(hours=1, minutes=30)  # daily, after the archive publishes
 WARMUP = pd.Timedelta(days=100)
+SPECS = "forward_v1"  # registered rule modules, comma-separated
 PRODUCT_CONFIG = RESEARCH / "product.json"
 FREQTRADE_CONFIG = REPO / "user_data" / "config.json"  # telegram.token / chat_id
 RECORDER = RESEARCH / "live"
@@ -104,13 +105,35 @@ def load_product(
     )
 
 
+def spec_strategies(spec: ModuleType) -> set[str]:
+    """Strategy ids a spec writes to the journal (forward_v1 predates ``STRATEGIES``)."""
+    if hasattr(spec, "STRATEGIES"):
+        return set(spec.STRATEGIES)
+    return {h.id for h in spec.REGISTRY} | {spec.STRATEGY_TREND}
+
+
+def load_specs(names: str) -> list[ModuleType]:
+    """Rule modules by comma-separated name; a missing file is skipped with a warning (a
+    machine without the newer spec keeps running the older ones)."""
+    specs = []
+    for name in names.split(","):
+        if (RESEARCH / f"{name}.py").exists():
+            specs.append(load_spec(name))
+        else:
+            logger.warning("no %s.py in %s: spec skipped", name, RESEARCH)
+    if not specs or len({s.PIT for s in specs}) > 1:
+        raise SystemExit(f"specs {names}: none found, or they read different stores")
+    return specs
+
+
 class Runner:
-    def __init__(self, spec: ModuleType, exchange: ccxt.Exchange) -> None:
-        self.spec = spec
-        self.pit: Path = spec.PIT
+    def __init__(self, specs: list[ModuleType], exchange: ccxt.Exchange) -> None:
+        self.specs = specs
+        self.spec = specs[0]  # the 4h universe and the barrier fees come from the first spec
+        self.pit: Path = self.spec.PIT
         self.ex = exchange
         self.conn = journal.connect(OUT / "journal.sqlite")
-        self.fee = spec.POLICY.round_trip_fee
+        self.fee = self.spec.POLICY.round_trip_fee
         self.product: Product | None = None
         # trend setups the rules closed without a price (the coin stopped trading)
         self.no_price: dict[int, pd.Timestamp] = {}
@@ -181,11 +204,13 @@ class Runner:
 
     # ------------------------------------------------------------ setups
 
-    def _record(self, row: pd.Series, decided: pd.Timestamp, now: pd.Timestamp, bar) -> None:
+    def _record(
+        self, spec: ModuleType, row: pd.Series, decided: pd.Timestamp, now: pd.Timestamp, bar
+    ) -> None:
         live = now - decided <= LIVE_WINDOW
         kw = {
             "strategy": row["strategy"],
-            "fingerprint": self.spec.fingerprint(),
+            "fingerprint": spec.fingerprint(),
             "source": "live" if live else "live_late",
             "pair": row["pair"],
             "timeframe": row["timeframe"],
@@ -199,11 +224,11 @@ class Runner:
             "max_bars": None if pd.isna(row["max_bars"]) else int(row["max_bars"]),
             "reason": row["reason"],
         }
-        s = make_setup(self.spec.POLICY, **kw)
+        s = make_setup(spec.POLICY, **kw)
         if live:
             try:
                 q = quote(self.ex, s.pair, s.side, s.notional)
-                s = make_setup(self.spec.POLICY, **kw, quote=q)
+                s = make_setup(spec.POLICY, **kw, quote=q)
             except ccxt.BaseError as e:
                 logger.warning("quote %s failed: %r", s.pair, e)
         if journal.record_setup(self.conn, s):
@@ -212,17 +237,19 @@ class Runner:
                 "setup recorded: %s %s %s %s (%s)", s.strategy, side, s.pair, s.status, s.source
             )
 
-    def record_new(self, rows: pd.DataFrame, bar: pd.Timedelta, now: pd.Timestamp) -> int:
+    def record_new(
+        self, spec: ModuleType, rows: pd.DataFrame, bar: pd.Timedelta, now: pd.Timestamp
+    ) -> int:
         if rows.empty:
             return 0
         known = journal.setups(self.conn)
         seen = set(zip(known["strategy"], known["pair"], known["candle_date"], strict=True))
-        first = self.spec.LIVE_START - (DAY if bar == DAY else pd.Timedelta(0))
+        first = spec.LIVE_START - (DAY if bar == DAY else pd.Timedelta(0))
         n = 0
         for _, row in rows[rows["candle_date"] >= first].iterrows():
             key = (row["strategy"], row["pair"], pd.Timestamp(row["candle_date"]).isoformat())
             if key not in seen:
-                self._record(row, pd.Timestamp(row["candle_date"]) + bar, now, bar)
+                self._record(spec, row, pd.Timestamp(row["candle_date"]) + bar, now, bar)
                 n += 1
         return n
 
@@ -241,10 +268,13 @@ class Runner:
         prints = f.set_index("date")["funding_rate"]
         return float(funding_between(prints, pd.Series([start]), pd.Series([end]))[0])
 
-    def close_trend(self, trades: pd.DataFrame) -> int:
-        """Record the exits of pending trend setups that the rules have closed."""
+    def close_trend(self, trades: pd.DataFrame, strategies: set[str] | None = None) -> int:
+        """Record the exits of pending trend setups (of ``strategies``, all when None) that the
+        rules have closed."""
         pend = journal.pending(self.conn)
         pend = pend[pend["max_bars"].isna()]
+        if strategies is not None:
+            pend = pend[pend["strategy"].isin(strategies)]
         if pend.empty or trades.empty:
             return 0
         done = trades[trades["exit_date"].notna()].copy()
@@ -278,21 +308,33 @@ class Runner:
 
     def cycle(self, now: pd.Timestamp) -> None:
         decision = now.floor("4h")
-        registered = self.spec.registered_fingerprint() == self.spec.fingerprint()
-        if not registered:
-            logger.error(
-                "rules fingerprint %s is not registered: no setup recorded", self.spec.fingerprint()
-            )
         self.sync(now, decision)
-        rows4 = self.spec.setups_4h(self.pit, decision)
-        trades = self.spec.setups_1d(self.pit, decision)
-        if registered:
-            n4, n1 = self.record_new(rows4, BAR, now), self.record_new(trades, DAY, now)
-            logger.info("decision %s: %d new 4h setups, %d new 1d setups", decision, n4, n1)
+        found, registered = [], True
+        for spec in self.specs:
+            ok = spec.registered_fingerprint() == spec.fingerprint()
+            if not ok:
+                registered = False
+                logger.error(
+                    "%s fingerprint %s is not registered: no setup recorded",
+                    spec.__name__,
+                    spec.fingerprint(),
+                )
+            rows4, trades = spec.setups_4h(self.pit, decision), spec.setups_1d(self.pit, decision)
+            if ok:
+                n4 = self.record_new(spec, rows4, BAR, now)
+                n1 = self.record_new(spec, trades, DAY, now)
+                logger.info(
+                    "%s decision %s: %d new 4h setups, %d new 1d setups",
+                    spec.__name__,
+                    decision,
+                    n4,
+                    n1,
+                )
+            found.append((spec, rows4, trades))
         scored = journal.score_barriers(self.conn, self.candles, self.funding, BAR, self.fee)
-        closed = self.close_trend(trades)
+        closed = sum(self.close_trend(t, spec_strategies(s)) for s, _, t in found)
         logger.info("scored %d barrier setups, closed %d trend setups", scored, closed)
-        issues = self.reconcile(pd.concat([rows4, trades], ignore_index=True))
+        issues = sum(self.reconcile(s, pd.concat([r4, t], ignore_index=True)) for s, r4, t in found)
         self.product_step(now, decision, issues, registered)
 
     def product_step(
@@ -324,13 +366,14 @@ class Runner:
         except Exception:
             logger.exception("cycle failure alert failed")
 
-    def reconcile(self, replay: pd.DataFrame) -> int:
-        """Every journal setup against the same rules replayed on the store as it is now;
+    def reconcile(self, spec: ModuleType, replay: pd.DataFrame) -> int:
+        """Every journal setup of ``spec`` against its rules replayed on the store as it is now;
         returns the number of disagreements."""
         live = journal.setups(self.conn)
+        live = live[live["strategy"].isin(spec_strategies(spec))]
         if live.empty or replay.empty:
             return 0
-        first = {"4h": self.spec.LIVE_START, "1d": self.spec.LIVE_START - DAY}
+        first = {"4h": spec.LIVE_START, "1d": spec.LIVE_START - DAY}
         keep = [
             pd.Timestamp(d) >= first[tf]
             for d, tf in zip(replay["candle_date"], replay["timeframe"], strict=True)
@@ -408,7 +451,9 @@ def wait_until(t: pd.Timestamp) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    parser.add_argument("--spec", default="forward_v1", help="rules module in user_data/research")
+    parser.add_argument(
+        "--spec", default=SPECS, help="rules modules in user_data/research, comma-separated"
+    )
     parser.add_argument("--once", action="store_true", help="run one cycle now and exit")
     parser.add_argument("--status", action="store_true", help="print the journal and the book")
     parser.add_argument("--log", type=Path, default=REPO / "user_data" / "logs" / "forward.log")
@@ -424,7 +469,7 @@ def main() -> None:
         telegram_test()
         return
     if args.preview:
-        spec = load_spec(args.spec)
+        spec = load_specs(args.spec)[0]
         start = pd.Timestamp(args.book_start or spec.LIVE_START)
         now = pd.Timestamp(args.now) if args.now else pd.Timestamp.now(tz="UTC")
         preview(args.preview, start, now)
@@ -447,7 +492,7 @@ def main() -> None:
         return
     try:
         runner = Runner(
-            load_spec(args.spec), ccxt.binanceusdm({"enableRateLimit": True, "timeout": 30_000})
+            load_specs(args.spec), ccxt.binanceusdm({"enableRateLimit": True, "timeout": 30_000})
         )
         runner.product = load_product(runner.conn, live=True)
         while True:
