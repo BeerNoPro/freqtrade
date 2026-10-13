@@ -165,13 +165,43 @@ class TelegramSender:
             raise SendError(self._clean(f"HTTP {r.status_code}: {reply.get('description', '')}"))
 
 
-def credentials(config: Path, env: Mapping[str, str] = os.environ) -> tuple[str, str] | None:
-    """Telegram token and chat id from ``FREQTRADE__TELEGRAM__TOKEN`` / ``..._CHAT_ID`` or the
-    ``telegram`` section of the Freqtrade config. Its ``enabled`` flag switches Freqtrade's own
-    interactive bot and is ignored here. None when either value is missing."""
+def read_dotenv(path: Path) -> dict[str, str]:
+    """``KEY=value`` lines of a .env file (``export`` prefix and quotes allowed, ``#`` comments
+    skipped); empty without the file."""
+    if not path.exists():
+        return {}
+    out = {}
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.removeprefix("export ").split("=", 1)
+        out[key.strip()] = value.strip().strip("\"'")
+    return out
+
+
+def credentials(
+    config: Path, env: Mapping[str, str] = os.environ, dotenv: Path | None = None
+) -> tuple[str, str] | None:
+    """Telegram token and chat id. Looked up in the process environment, then the ``dotenv``
+    file, then the ``telegram`` section of the Freqtrade config (whose ``enabled`` flag switches
+    Freqtrade's own interactive bot and is ignored here). Token: ``FREQTRADE__TELEGRAM__TOKEN``
+    or ``TELEGRAM_BOT_TOKEN``; chat: ``FREQTRADE__TELEGRAM__CHAT_ID``, ``TELEGRAM_CHAT_ID`` or
+    the first id of ``TELEGRAM_ADMIN_CHAT_IDS``. None when either is missing."""
+    values = {**(read_dotenv(dotenv) if dotenv else {}), **env}
     section: dict = {}
     if config.exists():
         section = json.loads(config.read_text(encoding="utf-8")).get("telegram") or {}
-    token = env.get("FREQTRADE__TELEGRAM__TOKEN") or str(section.get("token") or "")
-    chat = env.get("FREQTRADE__TELEGRAM__CHAT_ID") or str(section.get("chat_id") or "")
+    admins = values.get("TELEGRAM_ADMIN_CHAT_IDS", "").replace(",", " ").split()
+    token = (
+        values.get("FREQTRADE__TELEGRAM__TOKEN")
+        or values.get("TELEGRAM_BOT_TOKEN")
+        or str(section.get("token") or "")
+    )
+    chat = (
+        values.get("FREQTRADE__TELEGRAM__CHAT_ID")
+        or values.get("TELEGRAM_CHAT_ID")
+        or (admins[0] if admins else "")
+        or str(section.get("chat_id") or "")
+    )
     return (token, chat) if token and chat else None

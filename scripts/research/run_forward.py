@@ -62,6 +62,7 @@ WARMUP = pd.Timedelta(days=100)
 SPECS = "forward_v1,forward_v2"  # registered rule modules, comma-separated
 PRODUCT_CONFIG = RESEARCH / "product.json"
 FREQTRADE_CONFIG = REPO / "user_data" / "config.json"  # telegram.token / chat_id
+DOTENV = REPO / ".env"  # TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_CHAT_IDS (git-ignored)
 RECORDER = RESEARCH / "live"
 logger = logging.getLogger("forward")
 
@@ -72,8 +73,8 @@ def load_spec(name: str) -> ModuleType:
 
 
 def telegram_sender() -> TelegramSender | None:
-    """Send-only client from the Freqtrade config (or ``FREQTRADE__TELEGRAM__*``)."""
-    found = credentials(FREQTRADE_CONFIG)
+    """Send-only client from the environment, the repo ``.env`` or the Freqtrade config."""
+    found = credentials(FREQTRADE_CONFIG, dotenv=DOTENV)
     return TelegramSender(*found) if found else None
 
 
@@ -435,13 +436,13 @@ def telegram_test() -> None:
     """One message to the configured chat, whatever ``telegram_send`` says."""
     sender = telegram_sender()
     if sender is None:
-        raise SystemExit(f"no telegram.token / chat_id in {FREQTRADE_CONFIG} (or FREQTRADE__ env)")
+        raise SystemExit(f"no Telegram token / chat id in the environment, {DOTENV} or the config")
     now = pd.Timestamp.now(tz="UTC")
     sender.send(
         f"THỬ NGHIỆM · kiểm tra kết nối bot tín hiệu lúc {now:%Y-%m-%d %H:%M} UTC. Bot chỉ gửi "
         "tin (setup, đóng lệnh, tổng kết tuần, cảnh báo vận hành), không nhận lệnh điều khiển."
     )
-    print(f"sent to chat {sender.chat_id}")
+    print(f"sent to chat ...{sender.chat_id[-3:]}")
 
 
 def wait_until(t: pd.Timestamp) -> None:

@@ -133,3 +133,23 @@ def test_credentials_from_the_config_or_the_environment(tmp_path: Path) -> None:
     empty.write_text(json.dumps({"telegram": {"enabled": False, "token": "", "chat_id": ""}}))
     assert outbox.credentials(empty, env={}) is None
     assert outbox.credentials(tmp_path / "missing.json", env={}) is None
+
+
+def test_credentials_from_a_dotenv_file(tmp_path: Path) -> None:
+    """The repo .env names: TELEGRAM_BOT_TOKEN and the first id of TELEGRAM_ADMIN_CHAT_IDS
+    (TELEGRAM_CHAT_ID wins when set); the process environment and FREQTRADE__ names win."""
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(
+        "# bot\n"
+        f'TELEGRAM_BOT_TOKEN="{TOKEN}"\n'  # gate: allow-secret
+        "TELEGRAM_ALLOWED_CHAT_IDS=\n"
+        "export TELEGRAM_ADMIN_CHAT_IDS=1234567890, 555\n",
+        encoding="utf-8",
+    )
+    missing = tmp_path / "missing.json"
+    assert outbox.credentials(missing, env={}, dotenv=dotenv) == (TOKEN, "1234567890")
+    env = {"TELEGRAM_CHAT_ID": "42"}
+    assert outbox.credentials(missing, env=env, dotenv=dotenv) == (TOKEN, "42")
+    env = {"FREQTRADE__TELEGRAM__TOKEN": "9:env"}
+    assert outbox.credentials(missing, env=env, dotenv=dotenv) == ("9:env", "1234567890")
+    assert outbox.read_dotenv(tmp_path / "none.env") == {}
