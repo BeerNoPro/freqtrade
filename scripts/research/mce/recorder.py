@@ -275,10 +275,14 @@ def _day_times(stream_dir: Path, day: str) -> tuple[pd.Series, str]:
     return times.dropna().astype("int64"), state
 
 
-def gap_minutes(outdir: Path) -> dict[tuple[str, str], float]:
-    """Minutes of logged gaps per (stream, UTC day); stream ``all`` covers every stream."""
+Interval = tuple[int, int]
+
+
+def gap_intervals(outdir: Path) -> dict[tuple[str, str], list[Interval]]:
+    """Logged gaps (ms) per (stream, UTC day), split at midnight; stream ``all`` covers every
+    stream."""
     path = outdir / "_gaps.jsonl"
-    out: dict[tuple[str, str], float] = {}
+    out: dict[tuple[str, str], list[Interval]] = {}
     if not path.exists():
         return out
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -287,22 +291,35 @@ def gap_minutes(outdir: Path) -> dict[tuple[str, str], float]:
         g = json.loads(line)
         start, end = int(g["start"]), int(g["end"])
         while start < end:
-            day_end = (start // DAY_MS + 1) * DAY_MS
-            stop = min(end, day_end)
+            stop = min(end, (start // DAY_MS + 1) * DAY_MS)
             day = pd.Timestamp(start, unit="ms", tz="UTC").strftime("%Y-%m-%d")
-            out[(g["stream"], day)] = out.get((g["stream"], day), 0.0) + (stop - start) / 60_000
+            out.setdefault((g["stream"], day), []).append((start, stop))
             start = stop
     return out
+
+
+def union_minutes(intervals: list[Interval]) -> float:
+    """Minutes covered by the union of intervals: a sleep logged both by the heartbeat and by a
+    WebSocket reconnect counts once."""
+    total, reach = 0, None
+    for start, stop in sorted(intervals):
+        if reach is not None and start < reach:
+            start = reach
+        if stop > start:
+            total += stop - start
+            reach = stop
+    return total / 60_000
 
 
 def coverage(outdir: Path, at_ms: int | None = None) -> pd.DataFrame:
     """One row per stream and UTC day: rows, distinct snapshots against the clock grid
     (``EVERY``), hours with data, logged gap minutes, size and compaction state. ``coverage`` is
     the share of the day (up to ``at_ms`` today) that was recorded: snapshots / expected for
-    snapshot streams, 1 - logged gap minutes / day for liquidations (an event stream)."""
+    snapshot streams, 1 - missing minutes / day for liquidations (an event stream), where missing
+    is the union of the logged gaps and, on the first day, the time before the first row."""
     at_ms = at_ms if at_ms is not None else now_ms()
     today = pd.Timestamp(at_ms, unit="ms", tz="UTC").strftime("%Y-%m-%d")
-    gaps = gap_minutes(outdir)
+    gaps = gap_intervals(outdir)
     rows = []
     streams = sorted(p for p in outdir.iterdir() if p.is_dir() and p.name != "meta")
     for stream_dir in streams:
@@ -311,7 +328,8 @@ def coverage(outdir: Path, at_ms: int | None = None) -> pd.DataFrame:
             times, state = _day_times(stream_dir, day)
             start = int(pd.Timestamp(day, tz="UTC").timestamp() * 1000)
             span = min(at_ms, start + DAY_MS) - start  # today: the part of the day elapsed
-            gap = gaps.get(("all", day), 0.0) + gaps.get((stream_dir.name, day), 0.0)
+            logged = gaps.get(("all", day), []) + gaps.get((stream_dir.name, day), [])
+            gap = union_minutes(logged)
             if stream_dir.name in SNAPSHOT_STREAMS:
                 every = EVERY[stream_dir.name] * 1000
                 snaps = float(times.nunique())
@@ -319,8 +337,8 @@ def coverage(outdir: Path, at_ms: int | None = None) -> pd.DataFrame:
             else:
                 snaps = float("nan")
                 # before the first row ever recorded the recorder was not running (no gap logged)
-                before = (times.min() - start) / 60_000 if i == 0 and len(times) else 0.0
-                cov = max(0.0, 1 - (gap + before) / (span / 60_000))
+                before = [(start, int(times.min()))] if i == 0 and len(times) else []
+                cov = max(0.0, 1 - union_minutes(logged + before) / (span / 60_000))
             size = sum(
                 f.stat().st_size
                 for f in [stream_dir / f"{day}.parquet", *(stream_dir / day).glob("*")]

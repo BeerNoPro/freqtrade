@@ -219,6 +219,27 @@ def test_coverage_counts_snapshots_gaps_and_compaction(tmp_path: Path) -> None:
     assert liq["coverage"] == pytest.approx(11 / 24) and liq["late_compaction"]
 
 
+def test_coverage_counts_overlapping_gaps_once(tmp_path: Path) -> None:
+    writer, hour = PartWriter(tmp_path), 3_600_000
+    day1, day2 = DAY_MS - 24 * hour, DAY_MS
+    # first day: first row at 06:00, the machine slept 03:00-09:00 (overlaps the time before it)
+    writer.append("liquidations", [{"received": day1 + 6 * hour, "symbol": "X"}], day1 + 6 * hour)
+    writer.gap("all", day1 + 3 * hour, day1 + 9 * hour, "machine asleep")
+    # second day: one sleep logged by the heartbeat (all) and by the WebSocket reconnect, plus a
+    # separate 30-minute reconnect
+    writer.append("liquidations", [{"received": day2, "symbol": "X"}], day2)
+    writer.gap("all", day2 + 3 * hour, day2 + 9 * hour, "machine asleep")
+    writer.gap("liquidations", day2 + 2 * hour, day2 + 9 * hour + hour // 2, "reconnected")
+    writer.gap("liquidations", day2 + 12 * hour, day2 + 12 * hour + hour // 2, "reconnected")
+    writer.gap("book_ticker", day2 + 4 * hour, day2 + 5 * hour, "request failed")
+    cov = coverage(tmp_path, at_ms=day2 + 24 * hour).set_index(["stream", "day"])
+    first = cov.loc[("liquidations", "2026-10-10")]
+    assert first["coverage"] == pytest.approx(15 / 24)  # 00:00-09:00 missing, once
+    second = cov.loc[("liquidations", "2026-10-11")]
+    assert second["coverage"] == pytest.approx(16 / 24)  # 02:00-09:30 and 12:00-12:30
+    assert second["gap_min"] == 480
+
+
 def test_heartbeat_logs_a_long_silence_as_a_gap(tmp_path: Path) -> None:
     writer, path = PartWriter(tmp_path), tmp_path / ".heartbeat"
     beat(path, writer, 1_000_000, 120_000)  # first beat ever: nothing to compare

@@ -115,7 +115,8 @@ OI + long/short + taker mỗi 5 phút (`metrics`), độ dày sổ lệnh ±0,2�
   poll lỗi, máy ngủ → ghi vào `live/_gaps.jsonl`. Khoảng 40 MB/ngày. Một bộ ghi mỗi máy (khóa `live/.recorder.lock`).
 - Lịch poll ngủ từng bước ≤ 30 giây theo đồng hồ thực: đồng hồ monotonic của Windows dừng khi máy ngủ.
 - Độ phủ: `recorder_coverage.py` (mỗi luồng × ngày: phần ngày đã ghi, giờ có dữ liệu, phút trống, dung lượng, ngày
-  chưa gộp). Luồng thanh lý: độ phủ = 1 − phút trống / ngày.
+  chưa gộp). Luồng thanh lý: độ phủ = 1 − phút trống / ngày, phút trống tính theo hợp các khoảng (máy ngủ ghi cả
+  ở nhịp kiểm tra `all` lẫn lần kết nối lại WebSocket, chỉ đếm một lần).
 
 **Chạy trên VPS** (dữ liệu liên tục; người dùng tự làm): `git clone` repo, chép `user_data/research/` (kho `pit/`,
 luật, `thresholds.json`, `fingerprints.jsonl`) lên; `docker compose up -d --build recorder forward`; log:
