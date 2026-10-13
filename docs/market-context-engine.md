@@ -45,6 +45,8 @@ bộ ghi thời gian thực (recorder): dữ liệu sàn không lưu lịch sử
 | `audit.py` | Kiểm toán kho: nến (trùng, sai thứ tự, OHLC vô lý, khoảng trống, nến giả sau delist, mã dùng lại tên), funding, metrics, nến ngày khớp nến 4h; đối chiếu mẫu với API fapi và data.binance.vision qua `Sources` (không gọi mạng trong module) |
 | `listings.py` | Mã đổi tên và mã dùng lại tên (đánh dấu tay), đo trên kho (ngày, khoảng nghỉ, tỷ lệ giá), gợi ý cặp chưa đánh dấu |
 | `snapshot.py` | Ảnh chụp trước/sau: digest bảng và so từng dòng theo khóa (chứng minh đầu ra luật đã đăng ký không đổi, hoặc liệt kê đủ chênh lệch) |
+| `power.py` | Sức thống kê của luật đạt trước khi nghiên cứu (kiểm tra dương tính): cài lợi thế biết trước vào nhiễu đã trừ trung bình, áp cổng danh mục hoặc cổng sự kiện, tỷ lệ cùng dấu cho khối lịch sử; không đầu ra nào phụ thuộc trung bình của kết quả thật (có test) |
+| `intraday.py` | Nến 1 phút quanh sự kiện (giờ thanh toán funding…) từ file ngày của data.binance.vision, chỉ tải ngày có sự kiện, lưu loại `klines_1m_events` |
 
 Script: `download_pit_universe.py` (kho point-in-time; `--plan-only` ước lượng khối lượng tải), `record_market.py` +
 `schedule_recorder.ps1` (bộ ghi), `recorder_coverage.py` (độ phủ), `run_forward.py` + `schedule_forward.ps1` (runner
@@ -74,7 +76,11 @@ liệu thô; mọi đường đọc nghiên cứu bỏ dòng giả.
   NaN, runner để nguyên không chấm). Người dùng chọn xóa thay vì giữ giá phẳng làm giá thanh toán (2026-10-13).
 - Nến 0 khối lượng giữa chuỗi (tạm ngưng, nến trước khi mở giao dịch) giữ trong đường giá nhưng không tính là có mặt
   hay lịch sử 90 ngày của danh mục, và nến 4h đó không `active` (không sự kiện, không vào mức nền).
-- Funding in sau thời điểm đóng của nến có giao dịch cuối (nến 4h nếu có trước `end`, không thì nến ngày) bị bỏ.
+- Funding (mọi loại `funding*`) chỉ giữ trong khoảng giao dịch của coin: từ giờ mở nến **ngày** có giao dịch đầu tiên
+  (nến 4h chỉ có từ ~100 ngày trước khi coin vào top-25) đến giờ đóng nến **4h** có giao dịch cuối (không có 4h thì
+  nến ngày). Kỳ trước đó là của hợp đồng cũ trên mã dùng lại tên (API funding trả cả hợp đồng cũ); kỳ sau đó là giả.
+- Loại dữ liệu thêm (ngoài danh sách `prune` và runner quản lý): `funding_all/` (funding của mọi mã từng vào top-100,
+  tải từ file tháng của kho lưu trữ, hiện có ở `pit_hist`), `klines_1m_events/` (nến 1 phút quanh sự kiện).
 - Ngoại lệ: `download_pit_universe.py` chọn coin "từng top-25" trên dữ liệu thô (`raw=True`), vì đổi danh sách đó sẽ
   làm `prune` xóa file; kiểm toán đọc file thô.
 
