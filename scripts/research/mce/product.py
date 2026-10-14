@@ -10,6 +10,10 @@ heartbeat stale, a past day of the recorder below 90%, the journal disagreeing w
 an unregistered rules fingerprint; ``cycle_failed`` for an exception. Repeated alerts share a key
 per day or per 6-hour period, so each is sent once. ``flush`` delivers the outbox.
 
+Every message sent to Telegram is one image card (``mce.cards``, saved under ``media/``) with a
+short caption; one message per setup, its caption naming the other coins of its bet. A card that
+fails to render (no candles, matplotlib missing) leaves the text message.
+
 Configuration: ``user_data/research/product.json`` (private): ``capital``, ``risk`` (caps of
 ``RiskPolicy``), ``book_start``, ``telegram_send``, ``send_kinds``, and per rule its display
 ``name``, ``validated`` flag (drops the experimental label), published ``evidence`` lines and
@@ -17,16 +21,22 @@ Configuration: ``user_data/research/product.json`` (private): ``capital``, ``ris
 """
 
 import json
+import logging
+import re
 import sqlite3
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import pandas as pd
 
 from mce import journal, messages, outbox, recorder, riskbook
 from mce.riskbook import TAKEN, RiskPolicy
+
+
+logger = logging.getLogger(__name__)
 
 
 KINDS = ("setup", "close", "weekly", "alert")  # sent when Telegram is on; others stay in the log
@@ -40,11 +50,21 @@ CREATE TABLE IF NOT EXISTS cycles (
     PRIMARY KEY (decision, ran_at)
 );
 """
+MEDIA_KEEP = pd.Timedelta(days=30)  # card files older than this are deleted
 Coverage = Callable[[Path, list[str]], pd.DataFrame]
+# (pair, timeframe, end) -> closed candles dated before ``end`` (date, open, high, low, close)
+Candles = Callable[[str, str, pd.Timestamp], pd.DataFrame]
 
 
 def _coverage(outdir: Path, days: list[str]) -> pd.DataFrame:
     return recorder.coverage(outdir, days=days)
+
+
+def _cards():
+    """``mce.cards``, imported when a card is drawn: without matplotlib the messages stay text."""
+    from mce import cards
+
+    return cards
 
 
 @dataclass(frozen=True)
@@ -88,23 +108,65 @@ class Product:
         sender=None,
         recorder_dir: Path | None = None,
         coverage: Coverage = _coverage,
+        candles: Candles | None = None,
     ) -> None:
         self.j, self.cfg, self.log_path, self.sender = journal_conn, cfg, log_path, sender
-        self.recorder_dir, self.coverage = recorder_dir, coverage
+        self.recorder_dir, self.coverage, self.candles = recorder_dir, coverage, candles
+        self.media = db_path.parent / "media"
         self.db = riskbook.connect(db_path)
         outbox.init(self.db)
         self.db.executescript(CYCLES)
 
-    def post(self, key: str, kind: str, text: str, now: pd.Timestamp) -> bool:
+    def post(
+        self,
+        key: str,
+        kind: str,
+        text: str,
+        now: pd.Timestamp,
+        caption: str | None = None,
+        image: bytes | None = None,
+    ) -> bool:
         """Queue a message once per key and append it to the log. It waits for Telegram only if
-        a sender exists, sending is on and its kind is one of ``send_kinds``."""
+        a sender exists, sending is on and its kind is one of ``send_kinds``; ``image`` (a card)
+        is sent as a photo under ``caption``, ``text`` otherwise."""
         send = self.sender is not None and self.cfg.telegram_send and kind in self.cfg.send_kinds
-        if not outbox.enqueue(self.db, key, kind, text, send, now):
+        if outbox.has(self.db, key):
             return False
+        path = None
+        if image is not None:
+            self.media.mkdir(parents=True, exist_ok=True)
+            path = self.media / f"{re.sub(r'[^A-Za-z0-9_.-]+', '_', key)}.png"
+            path.write_bytes(image)
+        outbox.enqueue(self.db, key, kind, text, send, now, caption, str(path) if path else None)
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with self.log_path.open("a", encoding="utf-8", newline="\n") as f:
-            f.write(f"[{pd.Timestamp(now).isoformat(timespec='seconds')}] {kind} {key}\n{text}\n\n")
+            note = f" [ảnh {path.name}]" if path else ""
+            f.write(
+                f"[{pd.Timestamp(now).isoformat(timespec='seconds')}] {kind} {key}{note}\n"
+                f"{text}\n\n"
+            )
         return True
+
+    def _card(self, what: str, draw: Callable[[], bytes]) -> bytes | None:
+        """A rendered card, or None (logged) when it fails: the message then goes as text."""
+        try:
+            return draw()
+        except Exception:
+            logger.exception("card %s failed: text message instead", what)
+            return None
+
+    def _setup_card(self, s, a, rule, evidence, progress) -> bytes:
+        bars = self._bars(s["pair"], s["timeframe"], pd.Timestamp(s["decided_at"]))
+        return _cards().setup_card(s, a, rule, evidence, progress, self.cfg.policy, bars)
+
+    def _close_card(self, s, a, o, rule) -> bytes:
+        bars = self._bars(s["pair"], s["timeframe"], pd.Timestamp(o["exit_date"]))
+        return _cards().close_card(s, a, o, rule, self.cfg.policy, bars)
+
+    def _bars(self, pair: str, timeframe: str, end: pd.Timestamp) -> pd.DataFrame:
+        if self.candles is None:
+            return pd.DataFrame(columns=["date", "open", "high", "low", "close"])
+        return self.candles(pair, timeframe, end)
 
     def step(
         self, now: pd.Timestamp, no_price: dict[int, pd.Timestamp] | None = None
@@ -141,12 +203,17 @@ class Product:
                 text = messages.not_taken_text(s, a, rule, self.cfg.policy)
                 n += self.post(key, "setup_info", text, now)
                 continue
-            mine = setups["strategy"] == a["strategy"]
+            mine = setups[setups["strategy"] == a["strategy"]]
             evidence = messages.evidence_lines(
-                rule, setups[mine], scored[scored["strategy"] == a["strategy"]], now
+                rule, mine, scored[scored["strategy"] == a["strategy"]], now
             )
             text = messages.setup_text(s, a, rule, evidence, self.cfg.policy, _hedge(a, open_))
-            n += self.post(key, "setup", text, now)
+            bet = allocs[(allocs["bet"] == a["bet"]) & allocs["state"].isin(TAKEN)]
+            partners = [p for p in bet["pair"] if p != a["pair"]] if a["sleeve"] == "event" else []
+            caption = messages.setup_caption(s, a, rule, self.cfg.policy, partners)
+            progress = messages.progress_value(rule, mine, now)
+            image = self._card(key, partial(self._setup_card, s, a, rule, evidence, progress))
+            n += self.post(key, "setup", text, now, caption, image)
         return n
 
     def _closes(self, closes, setups, scored, now) -> int:
@@ -161,11 +228,12 @@ class Product:
             if sid in outcome.index:
                 for col in ("gross_r", "fee_r", "funding_r"):
                     o[col] = outcome.loc[sid, col]
-            s = by_id.loc[sid]
-            text = messages.close_text(
-                s, alloc.loc[sid], o, self._rule(s["strategy"]), self.cfg.policy
-            )
-            n += self.post(f"close:{sid}", "close", text, now)
+            s, a, rule = by_id.loc[sid], alloc.loc[sid], self._rule(by_id.loc[sid, "strategy"])
+            key = f"close:{sid}"
+            text = messages.close_text(s, a, o, rule, self.cfg.policy)
+            caption = messages.close_caption(s, o, rule, self.cfg.policy)
+            image = self._card(key, partial(self._close_card, s, a, o, rule))
+            n += self.post(key, "close", text, now, caption, image)
         return n
 
     def _weekly(self, now: pd.Timestamp, setups: pd.DataFrame, scored: pd.DataFrame) -> int:
@@ -176,16 +244,12 @@ class Product:
         key = f"weekly:{iso.year}-W{iso.week:02d}"
         if self.cfg.book_start >= end or outbox.has(self.db, key):
             return 0
-        text = messages.weekly_text(
-            (start, end),
-            riskbook.book(self.db),
-            setups,
-            scored,
-            self.cfg.rules,
-            self.cfg.policy,
-            self.ops(start, end),
-        )
-        return int(self.post(key, "weekly", text, now))
+        book, ops, rules = riskbook.book(self.db), self.ops(start, end), self.cfg.rules
+        text = messages.weekly_text((start, end), book, setups, scored, rules, self.cfg.policy, ops)
+        summary = messages.weekly_summary((start, end), book, setups, scored, rules, ops)
+        caption = messages.weekly_caption(summary, self.cfg.policy)
+        image = self._card(key, lambda: _cards().weekly_card(summary, self.cfg.policy))
+        return int(self.post(key, "weekly", text, now, caption, image))
 
     def ops(self, start: pd.Timestamp, end: pd.Timestamp) -> dict:
         """Operations of [start, end) for the weekly summary, from the book start on: 4h closes
@@ -220,7 +284,11 @@ class Product:
     # ------------------------------------------------------------ operations
 
     def alert(self, key: str, text: str, now: pd.Timestamp) -> int:
-        return int(self.post(f"alert:{key}", "alert", messages.alert_text(text), now))
+        full = messages.alert_text(text)
+        if outbox.has(self.db, f"alert:{key}"):
+            return 0
+        image = self._card(f"alert:{key}", lambda: _cards().alert_card(text, now))
+        return int(self.post(f"alert:{key}", "alert", full, now, messages.cap(full), image))
 
     def cycle_failed(self, now: pd.Timestamp, error: BaseException) -> int:
         """Alert for a failed cycle, once per error type and 6-hour period."""
@@ -298,7 +366,13 @@ class Product:
         return n
 
     def flush(self, now: pd.Timestamp, sleep: Callable[[float], None] = time.sleep) -> dict:
-        """Deliver the outbox through Telegram (nothing without a sender)."""
+        """Deliver the outbox through Telegram (nothing without a sender); delete card files
+        older than ``MEDIA_KEEP``."""
+        if self.media.exists():
+            cutoff = (now - MEDIA_KEEP).timestamp()
+            for f in self.media.glob("*.png"):
+                if f.stat().st_mtime < cutoff:
+                    f.unlink()
         if self.sender is None:
             return {}
         return outbox.flush(self.db, self.sender, now, sleep=sleep)

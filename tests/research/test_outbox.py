@@ -17,6 +17,7 @@ TOKEN = "123456:SECRET-test-token"  # gate: allow-secret
 class FakeSender:
     def __init__(self, fail: int = 0) -> None:
         self.sent: list[str] = []
+        self.photos: list[tuple[bytes, str]] = []
         self.fail = fail  # number of calls that fail first
 
     def send(self, text: str) -> None:
@@ -24,6 +25,9 @@ class FakeSender:
             self.fail -= 1
             raise SendError("network down")
         self.sent.append(text)
+
+    def send_photo(self, image: bytes, caption: str) -> None:
+        self.photos.append((image, caption))
 
 
 def _box(tmp_path: Path) -> sqlite3.Connection:
@@ -72,6 +76,46 @@ def test_messages_waiting_too_long_expire(tmp_path: Path) -> None:
     done = outbox.flush(conn, sender, T0 + pd.Timedelta(hours=6, minutes=1), sleep=lambda s: None)
     assert done == {"sent": 1, "expired": 1, "failed": 0} and sender.sent == ["fresh"]
     assert _states(conn) == {"old": "expired", "new": "sent"}
+
+
+def test_messages_with_an_image_go_as_a_photo_or_fall_back_to_text(tmp_path: Path) -> None:
+    conn = _box(tmp_path)
+    card = tmp_path / "card.png"
+    card.write_bytes(b"png")
+    outbox.enqueue(conn, "setup:1", "setup", "full text", True, T0, "short", str(card))
+    gone = str(tmp_path / "missing.png")
+    outbox.enqueue(conn, "close:1", "close", "close text", True, T0, "cap", gone)
+    sender = FakeSender()
+    assert outbox.flush(conn, sender, T0, sleep=lambda s: None)["sent"] == 2
+    assert sender.photos == [(b"png", "short")] and sender.sent == ["close text"]
+
+
+def test_an_old_outbox_gains_the_media_columns(tmp_path: Path) -> None:
+    conn = sqlite3.connect(tmp_path / "old.sqlite")
+    conn.execute(
+        "CREATE TABLE outbox (key TEXT PRIMARY KEY, created_at TEXT NOT NULL, kind TEXT NOT NULL,"
+        " text TEXT NOT NULL, state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,"
+        " sent_at TEXT, last_error TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO outbox (key, created_at, kind, text, state) VALUES ('a', 't', 'k', 'x', 's')"
+    )
+    outbox.init(conn)
+    row = outbox.rows(conn).iloc[0]
+    assert row["key"] == "a" and pd.isna(row["media"]) and pd.isna(row["caption"])
+
+
+def test_sender_posts_a_photo_with_its_caption() -> None:
+    calls = []
+
+    def post(url, data=None, files=None, json=None, timeout=None):
+        calls.append((url.rsplit("/", 1)[-1], data, files))
+        return Response(200, {"ok": True})
+
+    TelegramSender(TOKEN, "42", post=post).send_photo(b"one", "chú thích")
+    method, data, files = calls[0]
+    assert method == "sendPhoto" and data == {"chat_id": "42", "caption": "chú thích"}
+    assert files == {"photo": ("card.png", b"one", "image/png")}
 
 
 def test_long_messages_are_split_at_line_ends() -> None:

@@ -31,14 +31,17 @@ CREATE TABLE IF NOT EXISTS outbox (
     state TEXT NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0,
     sent_at TEXT,
-    last_error TEXT
+    last_error TEXT,
+    caption TEXT,
+    media TEXT
 );
 """
+ADDED = ("caption", "media")  # columns added after the first version of the table
 STATES = ("local", "pending", "sent", "expired")
 MAX_AGE = pd.Timedelta(hours=6)  # a message waiting longer is stale: expire it
 LIMIT = 4000  # characters per Telegram message (the API takes 4096)
 PAUSE = 1.0  # seconds between messages to one chat
-API = "https://api.telegram.org/bot{token}/sendMessage"
+API = "https://api.telegram.org/bot{token}/{method}"
 
 
 class SendError(Exception):
@@ -47,15 +50,38 @@ class SendError(Exception):
 
 def init(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    have = {r[1] for r in conn.execute("PRAGMA table_info(outbox)")}
+    for col in ADDED:
+        if col not in have:
+            conn.execute(f"ALTER TABLE outbox ADD COLUMN {col} TEXT")
+    conn.commit()
 
 
 def enqueue(
-    conn: sqlite3.Connection, key: str, kind: str, text: str, send: bool, now: pd.Timestamp
+    conn: sqlite3.Connection,
+    key: str,
+    kind: str,
+    text: str,
+    send: bool,
+    now: pd.Timestamp,
+    caption: str | None = None,
+    media: str | None = None,
 ) -> bool:
-    """Add a message once per key; False if the key exists. ``send``: wait for delivery."""
+    """Add a message once per key; False if the key exists. ``send``: wait for delivery.
+    ``media``: an image file sent as a photo under ``caption``; ``text`` is the full version,
+    sent instead when the image is missing."""
     cur = conn.execute(
-        "INSERT OR IGNORE INTO outbox (key, created_at, kind, text, state) VALUES (?, ?, ?, ?, ?)",
-        (key, pd.Timestamp(now).isoformat(), kind, text, "pending" if send else "local"),
+        "INSERT OR IGNORE INTO outbox (key, created_at, kind, text, state, caption, media) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            key,
+            pd.Timestamp(now).isoformat(),
+            kind,
+            text,
+            "pending" if send else "local",
+            caption,
+            media,
+        ),
     )
     conn.commit()
     return cur.rowcount == 1
@@ -101,13 +127,14 @@ def flush(
     pause: float = PAUSE,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, int]:
-    """Deliver the pending messages, oldest first, with ``sender.send(text)``. The first failure
-    stops the round (the message stays pending with its error, retried next time); a message
-    older than ``max_age`` expires instead."""
+    """Deliver the pending messages, oldest first: ``sender.send_photo(image, caption)`` when its
+    image file exists, else ``sender.send(text)`` in pieces. The first failure stops the round
+    (the message stays pending with its error, retried next time); a message older than
+    ``max_age`` expires instead."""
     done = {"sent": 0, "expired": 0, "failed": 0}
     waiting = pd.read_sql_query(
-        "SELECT key, created_at, text, attempts FROM outbox WHERE state = 'pending' "
-        "ORDER BY created_at, rowid",
+        "SELECT key, created_at, text, attempts, caption, media FROM outbox "
+        "WHERE state = 'pending' ORDER BY created_at, rowid",
         conn,
     )
     calls = 0
@@ -116,12 +143,19 @@ def flush(
             _mark(conn, m.key, state="expired")
             done["expired"] += 1
             continue
+        image = Path(m.media) if isinstance(m.media, str) else None
         try:
-            for piece in split_text(m.text):
+            if image is not None and image.exists():
                 if calls:
                     sleep(pause)
                 calls += 1
-                sender.send(piece)
+                sender.send_photo(image.read_bytes(), m.caption or m.text[:1024])
+            else:
+                for piece in split_text(m.text):
+                    if calls:
+                        sleep(pause)
+                    calls += 1
+                    sender.send(piece)
         except SendError as e:
             _mark(conn, m.key, attempts=int(m.attempts) + 1, last_error=str(e))
             done["failed"] += 1
@@ -138,7 +172,8 @@ def flush(
 
 
 class TelegramSender:
-    """Send-only Telegram client for one chat (``sendMessage``, plain text)."""
+    """Send-only Telegram client for one chat: ``sendMessage`` (plain text) and ``sendPhoto``.
+    It never reads updates."""
 
     def __init__(
         self, token: str, chat_id: str, post: Callable = requests.post, timeout: float = 15
@@ -151,10 +186,10 @@ class TelegramSender:
     def _clean(self, text: str) -> str:
         return text.replace(self._token, "***") if self._token else text
 
-    def send(self, text: str) -> None:
-        body = {"chat_id": self.chat_id, "text": text, "disable_web_page_preview": True}
+    def _call(self, method: str, **kw) -> None:
+        url = API.format(token=self._token, method=method)
         try:
-            r = self._post(API.format(token=self._token), json=body, timeout=self.timeout)
+            r = self._post(url, timeout=self.timeout, **kw)
         except Exception as e:  # requests errors quote the URL, which holds the token
             raise SendError(self._clean(f"{type(e).__name__}: {e}")) from None
         try:
@@ -163,6 +198,15 @@ class TelegramSender:
             reply = {}
         if r.status_code != 200 or not reply.get("ok"):
             raise SendError(self._clean(f"HTTP {r.status_code}: {reply.get('description', '')}"))
+
+    def send(self, text: str) -> None:
+        body = {"chat_id": self.chat_id, "text": text, "disable_web_page_preview": True}
+        self._call("sendMessage", json=body)
+
+    def send_photo(self, image: bytes, caption: str) -> None:
+        """One PNG with its caption (at most 1024 characters)."""
+        files = {"photo": ("card.png", image, "image/png")}
+        self._call("sendPhoto", data={"chat_id": self.chat_id, "caption": caption}, files=files)
 
 
 def read_dotenv(path: Path) -> dict[str, str]:

@@ -96,7 +96,15 @@ Vì sao:
 ## 5. Tin nhắn
 Mọi tin ghi vào `user_data/research/forward/messages.log`. Telegram chỉ nhận **tin cần làm**: setup được vào (đủ hoặc
 giảm), đóng lệnh, tổng kết tuần, cảnh báo vận hành. Setup bị chặn/trễ/bỏ qua chỉ ghi log và được đếm trong tổng kết.
-Ví dụ (số minh họa):
+
+Trên Telegram mỗi tin là **một ảnh thẻ** 1600×1000 px (`scripts/research/mce/cards.py`, matplotlib) kèm chú thích ngắn
+(≤ 1024 ký tự, copy được số):
+- setup: biểu đồ nến khung của luật kèm Vào/SL/TP và vùng lỗ/lãi, bảng số liệu, Kỳ vọng và thanh tiến độ tới mốc, rủi
+  ro mở; **mỗi lệnh một tin**, lệnh chung cược ghi chú "chung một cược với ..." trong chú thích;
+- đóng lệnh: nến từ lúc vào tới lúc ra, R gộp/phí/funding/ròng, lãi/lỗ theo % vốn;
+- tổng kết tuần: đường lãi/lỗ đã đóng của sổ, rủi ro mở, từng luật với thanh tiến độ mốc, vận hành;
+- cảnh báo: thẻ đỏ.
+Vẽ lỗi thì gửi bản chữ bên dưới. Ảnh lưu ở `forward/media/`, tự xóa sau 30 ngày. Ví dụ bản chữ (số minh họa):
 
 ```
 THỬ NGHIỆM - luật chưa đạt kiểm định, không giao dịch theo

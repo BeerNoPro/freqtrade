@@ -178,5 +178,36 @@ def test_weekly_summary() -> None:
     assert text.endswith("Vận hành: 40/42 chu kỳ đúng giờ · bộ ghi đủ ≥ 90%: 5/7 ngày")
 
 
+def test_captions_are_short_and_fit_telegram() -> None:
+    cap = messages.setup_caption(_setup(), _alloc(), RULE, POLICY)
+    assert cap.splitlines()[0] == "THỬ NGHIỆM · SHORT DOGEUSDT · (c) bán theo cú sập 4h"
+    assert "Vào 0.0822 · SL 0.0837373 (+1.9%) · TP 0.0791254 (-3.7%) · 12h" in cap
+    assert "rủi ro 0.25% vốn (1/4 cược)" in cap and cap.endswith(_setup()["reason"])
+    shared = messages.setup_caption(_setup(), _alloc(), RULE, POLICY, ["BNBUSDT", "UNIUSDT"])
+    assert (
+        "Chung một cược 1% với SHORT BNBUSDT, UNIUSDT cùng nến: cùng một cú sốc, "
+        "thường thắng thua cùng lúc"
+    ) in shared
+    assert len(messages.cap("x" * 2000)) == 1024
+    outcome = pd.Series({"exit_reason": "stop", "net_r": -1.06, "pnl": -0.00265})
+    close = messages.close_caption(_setup(), outcome, RULE, POLICY)
+    assert (
+        close == "THỬ NGHIỆM · ĐÓNG SHORT DOGEUSDT · Chạm SL · R ròng -1.06 · -0.27% vốn (-26 USDT)"
+    )
+
+
+def test_progress_value_of_both_milestone_kinds() -> None:
+    frac, label = messages.progress_value(RULE, pd.DataFrame(index=range(38)), T0)
+    assert frac == 0.5 and label == "100/200 sự kiện, hạn 2028-01-01"
+    rule = {"milestone": {"date": "2027-04-01", "from": "2026-04-01"}}
+    frac, label = messages.progress_value(rule, pd.DataFrame(), T0)
+    assert 0.5 < frac < 0.55 and label == "tới 2027-04-01 (còn 170 ngày)"
+    assert (
+        messages.progress_value({"milestone": {"date": "2027-04-01"}}, pd.DataFrame(), T0)[0]
+        is None
+    )
+    assert messages.progress_value({}, pd.DataFrame(), T0) is None
+
+
 def test_alert_text() -> None:
     assert messages.alert_text("bộ ghi ngừng").startswith("CẢNH BÁO VẬN HÀNH · bộ ghi ngừng")

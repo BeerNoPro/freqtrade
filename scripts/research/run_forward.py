@@ -72,6 +72,13 @@ def load_spec(name: str) -> ModuleType:
     return importlib.import_module(name)
 
 
+def store_candles(pair: str, timeframe: str, end: pd.Timestamp) -> pd.DataFrame:
+    """Closed candles of the store dated before ``end`` (for the image cards)."""
+    k = read_store(RESEARCH / "pit", f"klines_{timeframe}", pair, end)
+    cols = ["date", "open", "high", "low", "close"]
+    return k[cols] if k is not None else pd.DataFrame(columns=cols)
+
+
 def telegram_sender() -> TelegramSender | None:
     """Send-only client from the environment, the repo ``.env`` or the Freqtrade config."""
     found = credentials(FREQTRADE_CONFIG, dotenv=DOTENV)
@@ -103,6 +110,7 @@ def load_product(
         out / "messages.log",
         sender=sender,
         recorder_dir=RECORDER if live else None,
+        candles=store_candles,
     )
 
 

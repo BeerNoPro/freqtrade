@@ -29,6 +29,8 @@ joblib==1.6.0
 cloudpickle==3.1.2
 rich==15.0.0
 pyarrow==25.0.1; platform_machine != 'armv7l'
+# Image cards of the signal messages (scripts/research/mce/cards.py)
+matplotlib==3.11.2
 
 
 # Load ticker files 30% faster

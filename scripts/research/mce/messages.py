@@ -94,6 +94,26 @@ def progress(rule: dict, setups: pd.DataFrame, now: pd.Timestamp) -> str:
     return "chưa đặt"
 
 
+def progress_value(
+    rule: dict, setups: pd.DataFrame, now: pd.Timestamp
+) -> tuple[float | None, str] | None:
+    """(share of the way to the milestone, label) for a progress bar: events counted after IS,
+    or time elapsed between the milestone's ``from`` and its ``date`` (no share without
+    ``from``). None without a milestone."""
+    m = rule.get("milestone") or {}
+    if "events" in m:
+        k = int(m.get("before_live", 0)) + len(setups)
+        return k / m["events"], f"{k}/{m['events']} sự kiện, hạn {m.get('deadline', '?')}"
+    if "date" in m:
+        end = pd.Timestamp(m["date"], tz="UTC")
+        label = f"tới {m['date']} (còn {(end - now.floor('D')).days} ngày)"
+        if "from" not in m:
+            return None, label
+        start = pd.Timestamp(m["from"], tz="UTC")
+        return float((now - start) / (end - start)), label
+    return None
+
+
 def evidence_lines(
     rule: dict, setups: pd.DataFrame, scored: pd.DataFrame, now: pd.Timestamp
 ) -> list[str]:
@@ -231,47 +251,103 @@ def _in(dates: pd.Series, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series:
     return (t >= start) & (t < end)
 
 
-def _book_lines(book: pd.DataFrame, start, end, policy: RiskPolicy) -> list[str]:
+def _book_numbers(book: pd.DataFrame, start, end) -> dict:
+    """Closed P&L of the week and in total, its drawdown and curve, positions open at ``end``."""
     taken = book[book["state"].isin(TAKEN)]
     exit_t = pd.to_datetime(taken["exit_date"], utc=True)
     closed = taken[exit_t.notna() & (exit_t < end) & taken["pnl"].notna()]
     closed = closed.assign(_t=pd.to_datetime(closed["exit_date"], utc=True)).sort_values("_t")
-    week = float(closed.loc[closed["_t"] >= start, "pnl"].sum())
     cum = closed["pnl"].cumsum()
-    dd = float((cum - cum.cummax().clip(lower=0)).min()) if len(cum) else 0.0
-    total = float(cum.iloc[-1]) if len(cum) else 0.0
     still = taken[exit_t.isna() | (exit_t >= end)]
-    long_ = float(still.loc[still["side"] > 0, "risk"].sum())
-    short = float(still.loc[still["side"] < 0, "risk"].sum())
-    return [
-        (
-            f"Sổ (vốn mẫu {policy.capital:,.0f} USDT): tuần {week:+.2%} "
-            f"({week * policy.capital:+,.0f} USDT) · lũy kế {total:+.2%} · sụt giảm lớn nhất "
-            f"{min(dd, 0.0):.2%}"
-        ),
-        f"Đang mở {len(still)}: {risk_line(long_, short, policy)}",
-    ]
+    return {
+        "week_pnl": float(closed.loc[closed["_t"] >= start, "pnl"].sum()),
+        "total": float(cum.iloc[-1]) if len(cum) else 0.0,
+        "max_dd": min(float((cum - cum.cummax().clip(lower=0)).min()) if len(cum) else 0.0, 0.0),
+        "equity": pd.Series(cum.to_numpy(dtype=float), index=closed["_t"].to_numpy()),
+        "open": {
+            "n": len(still),
+            "long": float(still.loc[still["side"] > 0, "risk"].sum()),
+            "short": float(still.loc[still["side"] < 0, "risk"].sum()),
+        },
+    }
 
 
-def _rule_line(strategy, rule, book, setups, scored, start, end) -> str:
+def _rule_numbers(strategy, rule, book, setups, scored, start, end) -> dict:
     a = book[(book["strategy"] == strategy) & (book["state"] != "pre_book")]
     a = a[_in(a["decided_at"], start, end)]
     n = a["state"].value_counts()
     sc = scored[scored["strategy"] == strategy]
     week = sc[_in(sc["exit_date"], start, end)] if len(sc) else sc
     st = live_stats(sc)
-    live = (
-        f"trực tiếp {st['n']} setup đóng, TB {st['mean']:+.2f}R"
-        if st["n"]
-        else "trực tiếp chưa có setup đóng"
-    )
     mine = setups[setups["strategy"] == strategy]
-    return (
-        f"{rule.get('name', strategy)}: mới {len(a)} (vào {n.get('sent', 0)}, giảm "
-        f"{n.get('reduced', 0)}, chặn {n.get('blocked', 0) + n.get('duplicate', 0)}, trễ "
-        f"{n.get('late', 0)}, bỏ qua {n.get('skipped_cost', 0)}) · đóng {len(week)}: "
-        f"{week['net_r'].sum():+.2f}R · {live} · mốc {progress(rule, mine, end)}"
+    out = {
+        "name": rule.get("name", strategy),
+        "new": len(a),
+        "states": {
+            "sent": int(n.get("sent", 0)),
+            "reduced": int(n.get("reduced", 0)),
+            "blocked": int(n.get("blocked", 0) + n.get("duplicate", 0)),
+            "late": int(n.get("late", 0)),
+            "skipped": int(n.get("skipped_cost", 0)),
+        },
+        "closed": len(week),
+        "closed_r": float(week["net_r"].sum()) if len(week) else 0.0,
+        "live": (
+            f"trực tiếp {st['n']} setup đóng, TB {st['mean']:+.2f}R"
+            if st["n"]
+            else "trực tiếp chưa có setup đóng"
+        ),
+        "progress": progress_value(rule, mine, end),
+    }
+    s = out["states"]
+    out["text"] = (
+        f"{out['name']}: mới {out['new']} (vào {s['sent']}, giảm {s['reduced']}, chặn "
+        f"{s['blocked']}, trễ {s['late']}, bỏ qua {s['skipped']}) · đóng {out['closed']}: "
+        f"{out['closed_r']:+.2f}R · {out['live']} · mốc {progress(rule, mine, end)}"
     )
+    return out
+
+
+def _ops_line(ops: dict) -> str:
+    line = "Vận hành: "
+    if ops.get("expected"):
+        line += f"{ops['on_time']}/{ops['expected']} chu kỳ đúng giờ"
+    else:
+        line += "chưa có số liệu chu kỳ"
+    if ops.get("recorder_days"):
+        line += f" · bộ ghi đủ ≥ 90%: {ops['recorder_good']}/{ops['recorder_days']} ngày"
+        if ops.get("recorder_worst"):
+            line += f" (thấp nhất {ops['recorder_worst']})"
+    return line
+
+
+def weekly_summary(
+    week: tuple[pd.Timestamp, pd.Timestamp],
+    book: pd.DataFrame,
+    setups: pd.DataFrame,
+    scored: pd.DataFrame,
+    rules: dict,
+    ops: dict,
+) -> dict:
+    """Numbers of the week [start, end), shared by the text and the card: the book (P&L,
+    drawdown and curve of the closed P&L, positions open at the end), each rule (new setups by
+    book state, closed in the week, live journal stats, milestone) and operations (``ops``:
+    on_time, expected, recorder_good, recorder_days, optional recorder_worst)."""
+    start, end = week
+    names = (
+        list(rules) + sorted(set(setups["strategy"]) - set(rules)) if len(setups) else list(rules)
+    )
+    experimental = [s for s, r in rules.items() if not r.get("validated")]
+    return {
+        "week": week,
+        **_book_numbers(book, start, end),
+        "rules": [
+            _rule_numbers(s, rules.get(s, {}), book, setups, scored, start, end) for s in names
+        ],
+        "ops": _ops_line(ops),
+        "experimental": bool(experimental),
+        "all_experimental": len(experimental) == len(rules),
+    }
 
 
 def weekly_text(
@@ -283,38 +359,111 @@ def weekly_text(
     policy: RiskPolicy,
     ops: dict,
 ) -> str:
-    """Summary of the week [start, end): the book (P&L, drawdown of the closed P&L, positions
-    open at the end), each rule (new setups by book state, closed in the week, live journal
-    stats, milestone) and operations (``ops``: on_time, expected, recorder_good,
-    recorder_days, optional recorder_worst)."""
+    """Text of the weekly summary (numbers: ``weekly_summary``)."""
+    w = weekly_summary(week, book, setups, scored, rules, ops)
     start, end = week
     iso = start.isocalendar()
-    experimental = [s for s, r in rules.items() if not r.get("validated")]
     last = end - pd.Timedelta(days=1)
     head = f"TỔNG KẾT TUẦN {iso.year}-W{iso.week:02d} ({start:%d/%m} → {last:%d/%m} UTC)"
-    lines = [head + (" · THỬ NGHIỆM" if experimental else "")]
-    if experimental:
+    lines = [head + (" · THỬ NGHIỆM" if w["experimental"] else "")]
+    if w["experimental"]:
         lines.append(
             "Chưa luật nào tới mốc: số liệu để theo dõi, không kết luận."
-            if len(experimental) == len(rules)
+            if w["all_experimental"]
             else "Luật gắn THỬ NGHIỆM chưa tới mốc: số liệu để theo dõi, không kết luận."
         )
-    lines += _book_lines(book, start, end, policy)
-    names = (
-        list(rules) + sorted(set(setups["strategy"]) - set(rules)) if len(setups) else list(rules)
-    )
-    lines += [_rule_line(s, rules.get(s, {}), book, setups, scored, start, end) for s in names]
-    ops_line = "Vận hành: "
-    if ops.get("expected"):
-        ops_line += f"{ops['on_time']}/{ops['expected']} chu kỳ đúng giờ"
-    else:
-        ops_line += "chưa có số liệu chu kỳ"
-    if ops.get("recorder_days"):
-        ops_line += f" · bộ ghi đủ ≥ 90%: {ops['recorder_good']}/{ops['recorder_days']} ngày"
-        if ops.get("recorder_worst"):
-            ops_line += f" (thấp nhất {ops['recorder_worst']})"
-    lines.append(ops_line)
+    o = w["open"]
+    lines += [
+        (
+            f"Sổ (vốn mẫu {policy.capital:,.0f} USDT): tuần {w['week_pnl']:+.2%} "
+            f"({w['week_pnl'] * policy.capital:+,.0f} USDT) · lũy kế {w['total']:+.2%} · sụt "
+            f"giảm lớn nhất {w['max_dd']:.2%}"
+        ),
+        f"Đang mở {o['n']}: {risk_line(o['long'], o['short'], policy)}",
+        *[r["text"] for r in w["rules"]],
+        w["ops"],
+    ]
     return "\n".join(lines)
+
+
+def weekly_caption(summary: dict, policy: RiskPolicy) -> str:
+    start, _ = summary["week"]
+    iso = start.isocalendar()
+    tag = "THỬ NGHIỆM · " if summary["experimental"] else ""
+    return cap(
+        f"{tag}TỔNG KẾT TUẦN {iso.year}-W{iso.week:02d} · tuần {summary['week_pnl']:+.2%} "
+        f"({summary['week_pnl'] * policy.capital:+,.0f} USDT) · lũy kế {summary['total']:+.2%} · "
+        f"đang mở {summary['open']['n']}\n{summary['ops']}"
+    )
+
+
+# ---------------------------------------------------------------- captions (Telegram photos)
+
+
+CAPTION = 1024  # characters of a Telegram photo caption
+
+
+def cap(text: str, limit: int = CAPTION) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _tag(rule: dict) -> str:
+    return "" if rule.get("validated") else "THỬ NGHIỆM · "
+
+
+def _levels(s: pd.Series) -> str:
+    out = f"Vào {s['entry']:.6g} · SL {s['stop']:.6g} ({(s['stop'] / s['entry'] - 1) * 100:+.1f}%)"
+    if pd.notna(s.get("target")) and pd.notna(s.get("max_bars")):
+        hours = int(s["max_bars"]) * pd.Timedelta(s["timeframe"]) / pd.Timedelta(hours=1)
+        tp = (s["target"] / s["entry"] - 1) * 100
+        out += f" · TP {s['target']:.6g} ({tp:+.1f}%) · {hours:g}h"
+    else:
+        out += " · thoát theo xu hướng"
+    return out
+
+
+def setup_caption(
+    s: pd.Series,
+    a: pd.Series,
+    rule: dict,
+    policy: RiskPolicy,
+    partners: list[str] | None = None,
+) -> str:
+    """Short caption under the setup card (the card holds the details). ``partners``: the other
+    coins of the same bet (one message per setup, the shared bet noted here)."""
+    side = int(s["side"])
+    share = ""
+    if a["state"] == "reduced":
+        share = f" (giảm do trần {_cap(a['limit_hit'], side, policy)})"
+    elif a["sleeve"] == "event" and a["bet_size"] > 1:
+        share = f" (1/{int(a['bet_size'])} cược)"
+    lines = [
+        f"{_tag(rule)}{SIDE[side]} {s['pair']} · {rule.get('name') or s['strategy']}",
+        _levels(s),
+        (
+            f"KL {a['qty']:.6g} ({a['notional']:,.0f} USDT) · rủi ro {a['risk']:.2%} vốn"
+            f"{share} · ≤{int(s['leverage_max'])}x isolated"
+        ),
+    ]
+    if partners:
+        lines.append(
+            f"Chung một cược {policy.event_bet:.0%} với {SIDE[side]} {', '.join(partners)} cùng "
+            "nến: cùng một cú sốc, thường thắng thua cùng lúc"
+        )
+    lines.append(str(s["reason"]))
+    return cap("\n".join(lines))
+
+
+def close_caption(s: pd.Series, o: pd.Series, rule: dict, policy: RiskPolicy) -> str:
+    side = int(s["side"])
+    head = f"{_tag(rule)}ĐÓNG {SIDE[side]} {s['pair']} · "
+    if o["exit_reason"] == "no_price":
+        return cap(head + EXITS["no_price"])
+    what = EXITS.get(o["exit_reason"], o["exit_reason"])
+    return cap(
+        f"{head}{what} · R ròng {o['net_r']:+.2f} · {o['pnl']:+.2%} vốn "
+        f"({o['pnl'] * policy.capital:+,.0f} USDT)"
+    )
 
 
 def alert_text(text: str) -> str:

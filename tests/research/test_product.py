@@ -120,6 +120,51 @@ def test_closes_then_one_weekly_summary(tmp_path: Path) -> None:
     assert p.step(monday + MIN)["messages"] == 0
 
 
+def _fake_candles(pair: str, timeframe: str, end: pd.Timestamp) -> pd.DataFrame:
+    dates = pd.date_range(end=end - pd.Timedelta(timeframe), periods=30, freq=timeframe)
+    close = pd.Series(range(30), dtype=float) * 0.1 + 99.0
+    return pd.DataFrame(
+        {"date": dates, "open": close, "high": close + 0.5, "low": close - 0.5, "close": close}
+    )
+
+
+def test_every_message_gets_one_card_and_a_short_caption(tmp_path: Path) -> None:
+    """One message per setup, each with its own image; the caption names the other coins of
+    its bet. Closes, the weekly summary and alerts have their cards too; info stays text."""
+    j = _journal(tmp_path / "journal.sqlite")
+    p = Product(
+        j, tmp_path / "product.sqlite", CFG, tmp_path / "messages.log", candles=_fake_candles
+    )
+    p.step(T0 + MIN)
+    box = outbox.rows(p.db).set_index("key")
+    setups = box[box["kind"] == "setup"]
+    assert len(setups) == 5 and setups["media"].map(lambda m: Path(m).exists()).all()
+    assert (
+        "Chung một cược 1% với SHORT BUSDT, CUSDT, DUSDT cùng nến" in box.loc["setup:1", "caption"]
+    )
+    assert "Chung một cược" not in box.loc["setup:5", "caption"]  # the long is its own bet
+    assert pd.isna(box.loc["setup:6", "media"])  # not taken: text only
+    _stop_all(j)
+    p.step(T0 + pd.Timedelta(hours=4) + MIN)
+    p.alert("test", "bộ ghi ngừng", T0 + pd.Timedelta(hours=4))
+    p.step(pd.Timestamp("2026-10-19 00:02", tz="UTC"))
+    box = outbox.rows(p.db).set_index("key")
+    for key in ("close:5", "weekly:2026-W42", "alert:test"):
+        assert Path(box.loc[key, "media"]).exists() and box.loc[key, "caption"]
+    assert box.loc["close:5", "caption"].startswith("THỬ NGHIỆM · ĐÓNG LONG EUSDT · Chạm SL")
+
+
+def test_a_card_that_fails_to_render_falls_back_to_text(tmp_path: Path) -> None:
+    def broken(pair: str, timeframe: str, end: pd.Timestamp) -> pd.DataFrame:
+        raise OSError("store unreadable")
+
+    j = _journal(tmp_path / "journal.sqlite")
+    p = Product(j, tmp_path / "product.sqlite", CFG, tmp_path / "messages.log", candles=broken)
+    assert p.step(T0 + MIN)["messages"] == 6
+    box = outbox.rows(p.db)
+    assert box["media"].isna().all()
+
+
 def test_sendable_messages_wait_for_delivery_and_info_stays_local(tmp_path: Path) -> None:
     j = _journal(tmp_path / "journal.sqlite")
     cfg = replace(CFG, telegram_send=True)
@@ -220,13 +265,24 @@ def test_flush_delivers_through_the_sender(tmp_path: Path) -> None:
         def send(self, text: str) -> None:
             self.sent.append(text)
 
+        def send_photo(self, image: bytes, caption: str) -> None:
+            assert image[:4] == b"\x89PNG"
+            self.sent.append(caption)
+
     j = _journal(tmp_path / "journal.sqlite")
     sender = Sender()
     cfg = replace(CFG, telegram_send=True)
-    p = Product(j, tmp_path / "product.sqlite", cfg, tmp_path / "messages.log", sender=sender)
+    p = Product(
+        j,
+        tmp_path / "product.sqlite",
+        cfg,
+        tmp_path / "messages.log",
+        sender=sender,
+        candles=_fake_candles,
+    )
     p.step(T0 + MIN)
     assert p.flush(T0 + MIN, sleep=lambda s: None)["sent"] == 5
-    assert len(sender.sent) == 5 and all("THỬ NGHIỆM" in t for t in sender.sent)
+    assert len(sender.sent) == 5 and all(t.startswith("THỬ NGHIỆM · ") for t in sender.sent)
     off = Product(j, tmp_path / "other.sqlite", CFG, tmp_path / "other.log")
     assert off.flush(T0 + MIN) == {}
 

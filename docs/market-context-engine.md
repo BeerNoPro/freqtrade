@@ -52,7 +52,8 @@ bộ ghi thời gian thực (recorder): dữ liệu sàn không lưu lịch sử
 | `costs.py` | Chi phí giao dịch theo coin, thời điểm và cỡ lệnh: phí (VIP0 mặc định), nửa chênh lệch giá dựng lại từ lệnh khớp, tác động đi qua sổ lệnh `bookDepth`, funding; khứ hồi theo bp và R. Kiểm chứng với giá mua/bán và sổ lệnh thật của bộ ghi (`user_data/research/cost_check_v1.py`) |
 | `riskbook.py` | Lớp sản phẩm: ngân sách rủi ro danh mục (một cược cho setup cùng nến cùng chiều, suất trend, trần theo chiều và tổng), sổ `allocations` + `closures` chỉ ghi thêm, lãi/lỗ theo % vốn. Chỉ đọc nhật ký |
 | `messages.py` | Chữ của tin setup, đóng lệnh, tổng kết tuần, cảnh báo; dòng "Kỳ vọng" từ bằng chứng của luật và tiến độ mốc |
-| `outbox.py` | Hàng đợi tin (chống trùng, gửi lại, hết hạn) và gửi Telegram chỉ một chiều (`sendMessage`), che token trong log |
+| `outbox.py` | Hàng đợi tin (chống trùng, gửi lại, hết hạn) và gửi Telegram chỉ một chiều (`sendMessage`, `sendPhoto`), che token trong log |
+| `cards.py` | Ảnh thẻ HD (matplotlib) cho tin setup, đóng lệnh, tổng kết tuần, cảnh báo |
 | `product.py` | Một bước của lớp sản phẩm sau mỗi chu kỳ runner: phân bổ setup mới, đóng vị thế, tin nhắn, tổng kết tuần, kiểm tra vận hành |
 
 Script: `download_pit_universe.py` (kho point-in-time; `--plan-only` ước lượng khối lượng tải), `record_market.py` +
