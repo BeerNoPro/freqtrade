@@ -55,10 +55,12 @@ bộ ghi thời gian thực (recorder): dữ liệu sàn không lưu lịch sử
 | `outbox.py` | Hàng đợi tin (chống trùng, gửi lại, hết hạn) và gửi Telegram chỉ một chiều (`sendMessage`, `sendPhoto`), che token trong log |
 | `cards.py` | Ảnh thẻ HD (matplotlib) cho tin setup, đóng lệnh, tổng kết tuần, cảnh báo |
 | `product.py` | Một bước của lớp sản phẩm sau mỗi chu kỳ runner: phân bổ setup mới, đóng vị thế, tin nhắn, tổng kết tuần, kiểm tra vận hành |
+| `joblog.py` | Nhật ký job nghiên cứu: mỗi lần chạy một bản ghi bắt đầu/kết thúc (lệnh, commit, thời gian, trạng thái, file đầu ra, dòng cuối) trong `user_data/logs/jobs/jobs.jsonl`, toàn bộ output ở `<id>.log` |
 
 Script: `download_pit_universe.py` (kho point-in-time; `--plan-only` ước lượng khối lượng tải), `record_market.py` +
 `schedule_recorder.ps1` (bộ ghi), `recorder_coverage.py` (độ phủ), `run_forward.py` + `schedule_forward.ps1` (runner
-kiểm định tiến), `audit_store.py` + `schedule_audit.ps1` (kiểm toán kho).
+kiểm định tiến), `audit_store.py` + `schedule_audit.ps1` (kiểm toán kho), `jobs.py` (chạy và tra job nghiên cứu:
+`run --name X -- <lệnh>`, `list`, `show last`; mọi bước tải dữ liệu, `--check`, chạy luật đều nên đi qua đây).
 
 ## 3. Dữ liệu
 **Kho point-in-time** `user_data/research/pit/` (`download_pit_universe.py`, cập nhật hằng ngày bởi runner): nến ngày
