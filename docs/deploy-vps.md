@@ -17,12 +17,15 @@ dữ liệu) trong một venv. Laptop dùng Task Scheduler, VPS dùng **systemd 
 | Kiểm toán kho 03:00 UTC | `signal-audit.timer` → `audit_store.py --verify 30` |
 | Sao lưu 03:30 UTC | `signal-backup.timer` → `deploy/backup.sh` |
 | Đẩy lên Google Drive 03:45 UTC | `signal-offload.timer` → `deploy/offload.sh` (rclone) |
+| Watchdog mỗi 10 phút | `signal-watchdog.timer` → `scripts/research/watchdog.py` (python3 hệ thống) |
 
 **Cỡ máy: chạy trên gói nhỏ nhất (512 MB RAM, 10 GB SSD), có swap 1 GB.** Đo trên laptop:
 - RAM: runner tối đa ~350 MB lúc chạy chu kỳ, bộ ghi ~100 MB khi chạy thường.
 - Bộ ghi gộp file ngày cũ vào **01:00 UTC**, tốn ~300 MB (bản sửa `742b204`; trước đó 1,6 GB). Giờ này lệch khỏi chu
   kỳ ngày của runner (00:01 UTC) và đợt đồng bộ kho (01:30 UTC), nên mỗi lúc chỉ có một đỉnh.
 - RAM trống của máy 512 MB khoảng 280 MB; phần vượt dùng swap, lúc cao điểm chậm hơn chứ không chết.
+- Đo trên VPS ngày 2026-10-17, chu kỳ đầu: RSS runner tối đa 236 MB, bộ ghi 30 MB; RAM trống thấp nhất 112 MB; swap
+  dùng ~250 MB; cả chu kỳ chưa tới 2 phút.
 - Ổ: hệ điều hành ~2,8 GB, venv ~0,7 GB, swap 1 GB, kho ~0,2 GB; bộ ghi thêm **~30 MB/ngày** (~11 GB/năm). Vì vậy
   ngày dữ liệu bộ ghi cũ hơn 30 ngày được chuyển lên Google Drive (mục 5), VPS chỉ giữ khoảng 1 GB.
 - Khi bot chạy ổn định và cần thêm (UI, giao dịch thật) thì mới nâng máy.
@@ -139,7 +142,29 @@ myaccount.google.com → Security → Third-party apps.
 **Khôi phục:** dừng `signal-forward`, giải nén bản sao lưu, chép hai file sqlite vào `user_data/research/forward/`,
 chạy lại.
 
-## 6. Vận hành hằng ngày
+## 6. Cảnh báo và xử lý lỗi
+
+| Sự cố | Cơ chế | Báo Telegram |
+|---|---|---|
+| API Binance lỗi, mạng chập chờn | Gọi lại có giãn cách (`with_retry`); chu kỳ lỗi thì chạy lại ở nến sau; nến bị lỡ được ghi bù (`live_late`) | Chu kỳ lỗi; chu kỳ trễ > 15 phút (runner) |
+| Đồng bộ kho hằng ngày lỗi một phần | Thử lại từng coin sau 10/30/90 giây; ngày sau tự bổ sung phần thiếu | Chưa đồng bộ thành công trước 03:00 UTC (watchdog) |
+| Bộ ghi mất websocket hoặc lỗi một luồng | Tự kết nối lại; ghi khoảng trống vào `_gaps.jsonl` | Nhịp tim cũ > 15 phút; ngày < 90% (runner, watchdog) |
+| Runner hoặc bộ ghi chết, crash | systemd khởi động lại sau 30 giây (`Restart=always`); khởi động lại máy thì tự chạy (linger) | Service không chạy hoặc runner không xong chu kỳ > 4h20 (watchdog) |
+| Deploy lỗi | Preflight, chờ giờ an toàn, kiểm tra sau khi đổi, tự quay về bản cũ | Job CI đỏ (email GitHub) |
+| Ổ đĩa sắp đầy | Đẩy Drive, VPS giữ 30 ngày dữ liệu bộ ghi | < 1 GB trống, kèm số ngày còn lại (watchdog) |
+| RAM, swap cạn | Swap 1 GB; mỗi lúc một đỉnh RAM | RAM < 40 MB khi swap > 90% (watchdog) |
+| Sao lưu, đẩy Drive, kiểm toán lỗi | Timer chạy lại ngày sau | Job `failed`; kiểm toán có lỗi critical (watchdog) |
+| Telegram không gửi được | Hàng đợi tin gửi lại, quá hạn thì bỏ; watchdog thử lại lần chạy sau | Không thể (kênh báo là Telegram) |
+
+Watchdog báo **một lần**, nhắc lại mỗi 6 giờ nếu vẫn còn, và báo "ĐÃ ỔN LẠI" khi hết (trạng thái ở
+`user_data/logs/watchdog_state.json`). Nó chạy bằng `python3` của hệ thống và chỉ dùng thư viện chuẩn, nên vẫn chạy
+được khi venv của bot hỏng. Thử không gửi gì: `python3 ~/signal-bot/scripts/research/watchdog.py --dry-run`.
+
+**Giới hạn:** nếu cả VPS tắt hoặc mất mạng thì không có gì trên VPS báo được. Muốn bắt cả trường hợp này, cần một
+dịch vụ "dead man's switch" bên ngoài (ví dụ healthchecks.io, gói miễn phí): watchdog gửi tín hiệu sống mỗi 10 phút,
+dịch vụ báo khi tín hiệu dừng. Chưa làm, cần tài khoản của người dùng.
+
+## 7. Vận hành hằng ngày
 
 ```bash
 systemctl --user status signal-forward signal-recorder      # đang chạy?
@@ -149,6 +174,7 @@ cd ~/signal-bot/scripts/research && ../../.venv/bin/python run_forward.py --stat
 ../../.venv/bin/python recorder_coverage.py --days 3
 systemctl --user list-timers                                 # kiểm toán, sao lưu, đẩy Drive
 tail -n 5 ~/signal-bot/user_data/logs/offload.log            # lần đẩy Drive gần nhất + ổ còn trống
+python3 ~/signal-bot/scripts/research/watchdog.py --dry-run   # watchdog thấy gì (không gửi)
 df -h / && free -m                                           # ổ đĩa, RAM, swap
 ```
 

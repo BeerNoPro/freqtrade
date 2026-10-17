@@ -61,7 +61,10 @@ safe_now() {
 # which services run code changed between the two commits (file list in $1)
 plan_services() {
     FORWARD=no RECORDER=no UNITS=no
-    if grep -qE '^(scripts/research/|requirements\.txt)' <<<"$1"; then FORWARD=yes; fi
+    # files the runner never imports: the watchdog (system python3, own timer), the preflight
+    local outside='^scripts/research/(watchdog|deploy_preflight)\.py$' rest
+    rest="$(grep -vE "$outside" <<<"$1" || true)"  # no pipe: pipefail + an early grep -q exit
+    if grep -qE '^(scripts/research/|requirements\.txt)' <<<"$rest"; then FORWARD=yes; fi
     local rec='^(scripts/research/(record_market\.py|mce/(recorder|universe|__init__)\.py)|requirements\.txt)'
     if grep -qE "$rec" <<<"$1"; then RECORDER=yes; fi
     if grep -qE '^deploy/systemd/' <<<"$1"; then UNITS=yes FORWARD=yes RECORDER=yes; fi
@@ -72,6 +75,10 @@ restart_services() {
     if [ "$UNITS" = yes ]; then
         cp deploy/systemd/*.service deploy/systemd/*.timer "$UNITS_DIR/"
         systemctl --user daemon-reload
+        local timer
+        for timer in deploy/systemd/*.timer; do  # a timer added by this commit starts too
+            systemctl --user enable --now "$(basename "$timer")" >/dev/null
+        done
     fi
     if [ "$RECORDER" = yes ]; then systemctl --user restart signal-recorder; fi
     if [ "$FORWARD" = yes ]; then systemctl --user restart signal-forward; fi
@@ -161,6 +168,8 @@ main() {
         return 0
     fi
     if verify "$t0"; then
+        # the previous venv was only kept for this deploy's rollback: 650 MB back on a 10 GB disk
+        rm -rf "$APP/.venv-prev"
         log "deployed $sha"
         return 0
     fi

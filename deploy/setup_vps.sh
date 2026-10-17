@@ -73,7 +73,8 @@ cp deploy/systemd/*.service deploy/systemd/*.timer "$HOME/.config/systemd/user/"
 chmod +x deploy/*.sh
 systemctl --user daemon-reload
 systemctl --user enable signal-forward.service signal-recorder.service >/dev/null
-systemctl --user enable --now signal-backup.timer signal-audit.timer signal-offload.timer >/dev/null
+systemctl --user enable --now signal-backup.timer signal-audit.timer signal-offload.timer \
+    signal-watchdog.timer >/dev/null
 
 echo
 echo "Setup done. Next (docs/deploy-vps.md): copy .env and user_data/research from the laptop,"

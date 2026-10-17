@@ -125,6 +125,7 @@ Không làm lại các hướng dưới đây, trừ khi có lý do mới rõ r�
 | Ensemble Donchian chỉ long trên dữ liệu cũ (v3) | Bản chỉ long, 2022–2025 | Chưa chứng minh, chưa bác bỏ (CI rộng) | Thiếu dữ liệu, không phải thiếu ý tưởng |
 | Thanh lý: biến thể ngưỡng/horizon trên dải phát triển | Đổi 2 ATR, 12h... | Chạy lại trên cùng dữ liệu = đào dữ liệu | Chốt trước, chạy một lần |
 | Price action theo lớp (top-20, 4h) | L0 vào theo cấu trúc; L1 vào ở lần hồi đầu về vùng flip; L2 thêm nến xác nhận (từ chối giá, nhấn chìm). SL ở đỉnh/đáy swing đối diện, TP 2R, thoát sau 30 nến | Không lớp nào có lợi thế; hồi về vùng còn hơi kém hơn vào ngẫu nhiên; nến xác nhận chỉ đổi cách thoát, không thêm kỳ vọng | Đo từng lớp so với lớp trước, cùng SL/TP: biết lớp nào thêm giá trị |
+| (b), (c) trên coin hạng 21–100 (4h, 2026-10-17) | Giữ nguyên hai luật thanh lý / cú sập, chỉ đổi danh mục sang hạng thanh khoản 21–100; chi phí coin nhỏ 0,18% (bảo thủ 0,41%) | (b') lift 12h −0,07R, ròng −0,19R, các quý trái dấu. (c') lift +0,46R nhưng CI chạm 0, không cùng dấu cả hai năm, gần hết lợi nhuận nằm trong đợt sập 2025Q4 | Thêm coin làm tăng số sự kiện chứ không tăng nhiều sức thống kê: coin nhỏ sập cùng lúc (~4,8 coin mỗi nến), nên số tuần mới là cỡ mẫu thật |
 | Danh sách coin chọn theo hôm nay | Kiểm thử trên coin đang tồn tại | Làm phồng Sharpe đáng kể | Luôn dùng danh mục point-in-time |
 
 ## 5. Hướng chưa chạy và vì sao
