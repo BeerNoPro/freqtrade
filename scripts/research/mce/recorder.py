@@ -292,6 +292,18 @@ def save_meta(folder: Path, meta: dict[str, object]) -> None:
             path.write_bytes(gzip.compress(json.dumps(payload).encode()))
 
 
+COMPACT_HOUR = 1  # UTC; after the runner's daily cycle (00:01:30), before its store sync (01:30)
+
+
+def compact_before(taken_ms: int) -> str:
+    """First day (YYYY-MM-DD) not to compact at ``taken_ms``: yesterday is compacted from
+    ``COMPACT_HOUR`` on, so the compaction's memory peak never meets the runner's daily cycle
+    (a 512 MB server has room for one peak at a time)."""
+    t = pd.Timestamp(taken_ms, unit="ms", tz="UTC")
+    day = t.floor("D") - pd.Timedelta(days=0 if t.hour >= COMPACT_HOUR else 1)
+    return day.strftime("%Y-%m-%d")
+
+
 def compact_all(outdir: Path, before_day: str) -> dict[str, int]:
     """Compact every stream day older than ``before_day`` (YYYY-MM-DD). Returns rows per stream."""
     done: dict[str, int] = {}
@@ -541,7 +553,7 @@ class Recorder:
             depth=top_symbols(tickers, info, TOP_DEPTH),
             series=option_series(meta["options_exchange_info"]),
         )
-        done = await asyncio.to_thread(compact_all, self.outdir, day)
+        done = await asyncio.to_thread(compact_all, self.outdir, compact_before(taken))
         if done:
             logger.info("compacted %s", done)
         return len(meta)

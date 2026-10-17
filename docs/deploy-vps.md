@@ -16,10 +16,16 @@ dữ liệu) trong một venv. Laptop dùng Task Scheduler, VPS dùng **systemd 
 | Bộ ghi | `signal-recorder.service` → `scripts/research/record_market.py` |
 | Kiểm toán kho 03:00 UTC | `signal-audit.timer` → `audit_store.py --verify 30` |
 | Sao lưu 03:30 UTC | `signal-backup.timer` → `deploy/backup.sh` |
+| Đẩy lên Google Drive 03:45 UTC | `signal-offload.timer` → `deploy/offload.sh` (rclone) |
 
-Cỡ máy: 2 GB RAM + swap 2 GB (đo trên laptop: runner tối đa ~350 MB; bộ ghi lúc gộp file cuối ngày ~300 MB sau bản
-sửa `742b204`, trước đó 1,6 GB; đồng bộ kho hằng ngày thêm ~250 MB). Ổ: bộ ghi ~30 MB/ngày (~11 GB/năm), kho ~160 MB,
-venv ~1 GB.
+**Cỡ máy: chạy trên gói nhỏ nhất (512 MB RAM, 10 GB SSD), có swap 1 GB.** Đo trên laptop:
+- RAM: runner tối đa ~350 MB lúc chạy chu kỳ, bộ ghi ~100 MB khi chạy thường.
+- Bộ ghi gộp file ngày cũ vào **01:00 UTC**, tốn ~300 MB (bản sửa `742b204`; trước đó 1,6 GB). Giờ này lệch khỏi chu
+  kỳ ngày của runner (00:01 UTC) và đợt đồng bộ kho (01:30 UTC), nên mỗi lúc chỉ có một đỉnh.
+- RAM trống của máy 512 MB khoảng 280 MB; phần vượt dùng swap, lúc cao điểm chậm hơn chứ không chết.
+- Ổ: hệ điều hành ~2,8 GB, venv ~0,7 GB, swap 1 GB, kho ~0,2 GB; bộ ghi thêm **~30 MB/ngày** (~11 GB/năm). Vì vậy
+  ngày dữ liệu bộ ghi cũ hơn 30 ngày được chuyển lên Google Drive (mục 5), VPS chỉ giữ khoảng 1 GB.
+- Khi bot chạy ổn định và cần thêm (UI, giao dịch thật) thì mới nâng máy.
 
 ## 2. Cài lần đầu (VPS Ubuntu 24.04 trống)
 
@@ -27,9 +33,9 @@ venv ~1 GB.
 ssh ubuntu@159.65.140.79 'bash -s' < deploy/setup_vps.sh
 ```
 
-Script cài git, sqlite3, uv 0.10.9, Python 3.13; tạo swap 2 GB; giới hạn journald 200 MB; bật tường lửa chỉ mở SSH;
-clone `main` vào `~/signal-bot`; tạo venv; cài unit systemd; bật timer kiểm toán và sao lưu. Runner và bộ ghi được
-bật nhưng **chưa chạy**, chờ chép dữ liệu (mục 3).
+Script cài git, sqlite3, rclone, uv 0.10.9, Python 3.13; tạo swap 1 GB; giới hạn journald 200 MB; bật tường lửa chỉ
+mở SSH; clone `main` vào `~/signal-bot` (không tải nội dung file cũ); tạo venv (không giữ cache); cài unit systemd;
+bật timer kiểm toán, sao lưu và đẩy Drive. Runner và bộ ghi được bật nhưng **chưa chạy**, chờ chép dữ liệu (mục 3).
 
 ## 3. Chuyển từ laptop (một lần)
 
@@ -100,13 +106,38 @@ tail ~/signal-bot/user_data/logs/deploys.log     # lịch sử deploy
 ~/signal-bot/deploy/deploy.sh <sha cũ>           # quay lại: cùng các bước kiểm tra
 ```
 
-## 5. Sao lưu
+## 5. Sao lưu, Google Drive, kéo về laptop
 
-`signal-backup.timer` (03:30 UTC): bản sao an toàn của `journal.sqlite` và `product.sqlite` (lệnh `.backup` của
-sqlite, kiểm tra `integrity_check`), `messages.log`, luật và file riêng → `user_data/backups/<ngày>.tar.gz`, giữ 14
-ngày. Kéo về laptop: `powershell -ExecutionPolicy Bypass -File deploy\pull_backup.ps1` (thêm `-All` để kéo cả 14
-ngày) → `user_data\vps_backups\`. Khôi phục: dừng `signal-forward`, giải nén, chép hai file sqlite vào
-`user_data/research/forward/`, chạy lại.
+**Trên VPS** (`signal-backup.timer`, 03:30 UTC): bản sao an toàn của `journal.sqlite` và `product.sqlite` (lệnh
+`.backup` của sqlite, kiểm tra `integrity_check`), `messages.log`, luật và file riêng →
+`user_data/backups/<ngày>.tar.gz`, giữ 14 ngày (mỗi bản chỉ vài trăm KB).
+
+**Lên Google Drive** (`signal-offload.timer`, 03:45 UTC, `deploy/offload.sh`): VPS tự đẩy, không cần laptop bật.
+- Đẩy bản sao lưu (giữ 90 ngày trên Drive) và mọi ngày dữ liệu bộ ghi đã gộp vào thư mục `signal-bot/` trên Drive.
+- Ngày bộ ghi cũ hơn 30 ngày được **chuyển** hẳn lên Drive (rclone kiểm tra từng file đã lên đủ rồi mới xóa trên VPS).
+- Chưa cài Drive thì job chỉ ghi dung lượng ổ vào `user_data/logs/offload.log`, không làm gì khác.
+- Dung lượng Drive: ~11 GB/năm cho dữ liệu bộ ghi; gói Drive miễn phí 15 GB dùng chung với Gmail.
+
+Cài Drive một lần (rclone, quyền `drive.file`: rclone chỉ thấy file do chính nó tạo, không đọc được phần còn lại của
+Drive):
+1. Trên laptop cài rclone: `winget install Rclone.Rclone`.
+2. Trên VPS: `rclone config` → `n` (remote mới) → tên **`gdrive`** → loại `drive` → để trống client id/secret →
+   scope chọn **`drive.file`** → các câu sau để mặc định → "Use web browser to automatically authenticate?" chọn
+   **`n`**. rclone in ra một lệnh `rclone authorize "drive" "..."`.
+3. Chạy lệnh đó trên laptop: trình duyệt mở, đăng nhập Google, cho phép; laptop in ra một đoạn token.
+4. Dán token vào VPS, xác nhận. Thử: `~/signal-bot/deploy/offload.sh`, rồi xem thư mục `signal-bot` trên Drive.
+
+Token nằm trong `~/.config/rclone/rclone.conf` của VPS (chỉ user `ubuntu` đọc được). Thu hồi bất cứ lúc nào ở
+myaccount.google.com → Security → Third-party apps.
+
+**Kéo về laptop:**
+- Bản sao lưu từ VPS: `powershell -ExecutionPolicy Bypass -File deploy\pull_backup.ps1` (`-All`: cả 14 ngày) →
+  `user_data\vps_backups\`.
+- Dữ liệu bộ ghi cho nghiên cứu, từ Drive: `rclone copy gdrive:signal-bot/live user_data/research/live` (cần chạy
+  bước 2–4 ở trên trên laptop với cùng tên remote), hoặc tải bằng Google Drive for desktop.
+
+**Khôi phục:** dừng `signal-forward`, giải nén bản sao lưu, chép hai file sqlite vào `user_data/research/forward/`,
+chạy lại.
 
 ## 6. Vận hành hằng ngày
 
@@ -116,8 +147,9 @@ journalctl --user -u signal-forward -n 50                    # lỗi khởi đ�
 tail -n 20 ~/signal-bot/user_data/logs/forward.log           # chu kỳ 4h
 cd ~/signal-bot/scripts/research && ../../.venv/bin/python run_forward.py --status
 ../../.venv/bin/python recorder_coverage.py --days 3
-systemctl --user list-timers                                 # kiểm toán, sao lưu
-df -h / && free -m                                           # ổ đĩa, RAM
+systemctl --user list-timers                                 # kiểm toán, sao lưu, đẩy Drive
+tail -n 5 ~/signal-bot/user_data/logs/offload.log            # lần đẩy Drive gần nhất + ổ còn trống
+df -h / && free -m                                           # ổ đĩa, RAM, swap
 ```
 
 Cảnh báo vận hành vẫn gửi qua Telegram như trên laptop (chu kỳ lỗi, runner trễ, bộ ghi ngừng, độ phủ thấp, lệch đối

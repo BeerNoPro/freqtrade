@@ -26,6 +26,7 @@ BEAT="$APP/user_data/research/live/.heartbeat"
 UNITS_DIR="$HOME/.config/systemd/user"
 export PATH="$HOME/.local/bin:$PATH"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export UV_NO_CACHE=1  # 10 GB disk: no second copy of every wheel
 
 WT=""  # temporary worktree of the new commit, removed on exit
 cleanup() {

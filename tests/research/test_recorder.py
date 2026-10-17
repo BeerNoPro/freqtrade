@@ -326,6 +326,14 @@ def test_compact_day_output_is_unchanged_by_the_memory_fix(tmp_path: Path) -> No
     assert not (tmp_path / "depth" / "2026-10-10").exists()
 
 
+def test_yesterday_is_compacted_after_the_runner_daily_cycle() -> None:
+    at = lambda s: int(pd.Timestamp(s, tz="UTC").timestamp() * 1000)  # noqa: E731
+    assert recorder.compact_before(at("2026-10-18 00:00:02")) == "2026-10-17"  # keeps the 17th
+    assert recorder.compact_before(at("2026-10-18 00:59:59")) == "2026-10-17"
+    assert recorder.compact_before(at("2026-10-18 01:00:02")) == "2026-10-18"  # compacts it
+    assert recorder.compact_before(at("2026-10-18 23:00:02")) == "2026-10-18"
+
+
 def test_heartbeat_logs_a_long_silence_as_a_gap(tmp_path: Path) -> None:
     writer, path = PartWriter(tmp_path), tmp_path / ".heartbeat"
     beat(path, writer, 1_000_000, 120_000)  # first beat ever: nothing to compare
