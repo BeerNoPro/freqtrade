@@ -273,11 +273,16 @@ def _book_numbers(book: pd.DataFrame, start, end) -> dict:
 
 
 def _rule_numbers(strategy, rule, book, setups, scored, start, end) -> dict:
-    a = book[(book["strategy"] == strategy) & (book["state"] != "pre_book")]
+    """New setups by book state, positions of the book closed in the week (setups decided
+    before the book start or not taken are left out, so the R matches the book P&L), journal
+    stats over every live setup."""
+    mine_book = book[book["strategy"] == strategy]
+    a = mine_book[mine_book["state"] != "pre_book"]
     a = a[_in(a["decided_at"], start, end)]
     n = a["state"].value_counts()
+    taken = set(mine_book.loc[mine_book["state"].isin(TAKEN), "setup_id"])
     sc = scored[scored["strategy"] == strategy]
-    week = sc[_in(sc["exit_date"], start, end)] if len(sc) else sc
+    week = sc[sc["id"].isin(taken) & _in(sc["exit_date"], start, end)] if len(sc) else sc
     st = live_stats(sc)
     mine = setups[setups["strategy"] == strategy]
     out = {

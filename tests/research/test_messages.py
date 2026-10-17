@@ -143,26 +143,34 @@ def test_evidence_lines_show_a_ci_from_ten_closed_setups_and_a_date_milestone() 
 
 def test_weekly_summary() -> None:
     week = (pd.Timestamp("2026-10-12", tz="UTC"), pd.Timestamp("2026-10-19", tz="UTC"))
+    early = (T0 - pd.Timedelta(hours=4)).isoformat()  # decided before the book start
     book = pd.DataFrame(
         {
-            "strategy": ["shock_no_oi_drop_short_4h@v1"] * 3,
-            "decided_at": [T0.isoformat()] * 3,
-            "side": [-1, -1, -1],
-            "state": ["sent", "sent", "blocked"],
-            "risk": [0.0025, 0.0025, 0.0],
-            "exit_date": [(T0 + pd.Timedelta(hours=8)).isoformat(), None, None],
-            "pnl": [-0.00265, np.nan, np.nan],
+            "setup_id": [1, 2, 3, 4, 5],
+            "strategy": ["shock_no_oi_drop_short_4h@v1"] * 5,
+            "decided_at": [T0.isoformat()] * 4 + [early],
+            "side": [-1, -1, -1, -1, -1],
+            "state": ["sent", "sent", "blocked", "blocked", "pre_book"],
+            "risk": [0.0025, 0.0025, 0.0, 0.0, 0.0],
+            "exit_date": [(T0 + pd.Timedelta(hours=8)).isoformat(), None, None, None, None],
+            "pnl": [-0.00265, np.nan, np.nan, np.nan, np.nan],
         }
     )
     journal_setups = pd.DataFrame(
-        {"strategy": ["shock_no_oi_drop_short_4h@v1"] * 3, "decided_at": [T0.isoformat()] * 3}
+        {
+            "strategy": ["shock_no_oi_drop_short_4h@v1"] * 5,
+            "decided_at": [T0.isoformat()] * 4 + [early],
+        }
     )
+    # the journal also closes the blocked setup 4 and the pre-book setup 5: neither is a book
+    # position, so the week's "đóng" counts only setup 1
     scored = pd.DataFrame(
         {
-            "strategy": ["shock_no_oi_drop_short_4h@v1"],
-            "decided_at": [T0.isoformat()],
-            "exit_date": [(T0 + pd.Timedelta(hours=8)).isoformat()],
-            "net_r": [-1.06],
+            "id": [1, 4, 5],
+            "strategy": ["shock_no_oi_drop_short_4h@v1"] * 3,
+            "decided_at": [T0.isoformat(), T0.isoformat(), early],
+            "exit_date": [(T0 + pd.Timedelta(hours=8)).isoformat()] * 3,
+            "net_r": [-1.06, 1.9, -1.1],
         }
     )
     ops = {"on_time": 40, "expected": 42, "recorder_good": 5, "recorder_days": 7}
@@ -173,8 +181,9 @@ def test_weekly_summary() -> None:
     assert "Sổ (vốn mẫu 10,000 USDT): tuần -0.27% (-26 USDT) · lũy kế -0.27%" in text
     assert "sụt giảm lớn nhất -0.27%" in text
     assert "Đang mở 1: LONG 0.00%/5% · SHORT 0.25%/5% · tổng 0.25%/8%" in text
-    assert "(c) bán theo cú sập 4h: mới 3 (vào 2, giảm 0, chặn 1, trễ 0, bỏ qua 0)" in text
-    assert "đóng 1: -1.06R" in text and "mốc 200 sự kiện sau IS (65/200)" in text
+    assert "(c) bán theo cú sập 4h: mới 4 (vào 2, giảm 0, chặn 2, trễ 0, bỏ qua 0)" in text
+    assert "đóng 1: -1.06R" in text and "mốc 200 sự kiện sau IS (67/200)" in text
+    assert "trực tiếp 3 setup đóng, TB -0.09R" in text  # the journal evidence keeps all three
     assert text.endswith("Vận hành: 40/42 chu kỳ đúng giờ · bộ ghi đủ ≥ 90%: 5/7 ngày")
 
 
