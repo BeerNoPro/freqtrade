@@ -33,7 +33,7 @@ dữ liệu) trong một venv. Laptop dùng Task Scheduler, VPS dùng **systemd 
 ssh ubuntu@159.65.140.79 'bash -s' < deploy/setup_vps.sh
 ```
 
-Script cài git, sqlite3, rclone, uv 0.10.9, Python 3.13; tạo swap 1 GB; giới hạn journald 200 MB; bật tường lửa chỉ
+Script cài git, sqlite3, rclone, uv 0.10.9, Python 3.13; tạo swap 1 GB; giới hạn journald 100 MB; tắt ModemManager và fwupd (~40 MB RAM); bật tường lửa chỉ
 mở SSH; clone `main` vào `~/signal-bot` (không tải nội dung file cũ); tạo venv (không giữ cache); cài unit systemd;
 bật timer kiểm toán, sao lưu và đẩy Drive. Runner và bộ ghi được bật nhưng **chưa chạy**, chờ chép dữ liệu (mục 3).
 

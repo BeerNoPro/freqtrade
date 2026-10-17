@@ -74,6 +74,10 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_SSH_KEY" ]; then
+            echo "VPS secrets not set: nothing deployed (docs/deploy-vps.md, section 4)"
+            exit 0
+          fi
           install -m 700 -d ~/.ssh
           printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
@@ -87,6 +91,7 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
+          [ -f ~/.ssh/deploy_key ] || exit 0
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
             "$VPS_USER@$VPS_HOST" status || true
           rm -f ~/.ssh/deploy_key

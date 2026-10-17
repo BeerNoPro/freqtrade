@@ -33,10 +33,14 @@ if ! swapon --show | grep -q /swapfile; then
     grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
 fi
 
-echo "== journald capped at 200 MB"
+echo "== journald capped at 100 MB"
 sudo mkdir -p /etc/systemd/journald.conf.d
-printf '[Journal]\nSystemMaxUse=200M\n' | sudo tee /etc/systemd/journald.conf.d/size.conf >/dev/null
+printf '[Journal]\nSystemMaxUse=100M\n' | sudo tee /etc/systemd/journald.conf.d/size.conf >/dev/null
 sudo systemctl restart systemd-journald
+
+echo "== services a droplet never needs (modems, firmware updates): ~40 MB of RAM back"
+sudo systemctl disable --now ModemManager.service >/dev/null 2>&1 || true
+sudo systemctl mask --now fwupd.service >/dev/null 2>&1 || true
 
 echo "== firewall: SSH only (the bot only makes outgoing connections)"
 sudo ufw allow OpenSSH >/dev/null
