@@ -23,6 +23,8 @@ dữ liệu) trong một venv. Laptop dùng Task Scheduler, VPS dùng **systemd 
 - Bộ ghi gộp file ngày cũ vào **01:00 UTC**, tốn ~300 MB (bản sửa `742b204`; trước đó 1,6 GB). Giờ này lệch khỏi chu
   kỳ ngày của runner (00:01 UTC) và đợt đồng bộ kho (01:30 UTC), nên mỗi lúc chỉ có một đỉnh.
 - RAM trống của máy 512 MB khoảng 280 MB; phần vượt dùng swap, lúc cao điểm chậm hơn chứ không chết.
+- Đo trên VPS ngày 2026-10-17, chu kỳ đầu: RSS runner tối đa 236 MB, bộ ghi 30 MB; RAM trống thấp nhất 112 MB; swap
+  dùng ~250 MB; cả chu kỳ chưa tới 2 phút.
 - Ổ: hệ điều hành ~2,8 GB, venv ~0,7 GB, swap 1 GB, kho ~0,2 GB; bộ ghi thêm **~30 MB/ngày** (~11 GB/năm). Vì vậy
   ngày dữ liệu bộ ghi cũ hơn 30 ngày được chuyển lên Google Drive (mục 5), VPS chỉ giữ khoảng 1 GB.
 - Khi bot chạy ổn định và cần thêm (UI, giao dịch thật) thì mới nâng máy.
