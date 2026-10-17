@@ -7,8 +7,8 @@ open interest and daily exchange metadata. Runs until stopped, one instance at a
     .venv/Scripts/python.exe scripts/research/record_market.py --minutes 10   # bounded test run
     .venv/Scripts/python.exe scripts/research/record_market.py --compact-only
 
-Windows: ``scripts/research/schedule_recorder.ps1`` (Task Scheduler). VPS: service ``recorder``
-in ``docker-compose.yml``.
+Windows: ``scripts/research/schedule_recorder.ps1`` (Task Scheduler). VPS:
+``deploy/systemd/signal-recorder.service`` (docs/deploy-vps.md).
 """
 
 import argparse

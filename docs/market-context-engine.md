@@ -128,10 +128,10 @@ OI + long/short + taker mỗi 5 phút (`metrics`), độ dày sổ lệnh ±0,2�
   chưa gộp). Luồng thanh lý: độ phủ = 1 − phút trống / ngày, phút trống tính theo hợp các khoảng (máy ngủ ghi cả
   ở nhịp kiểm tra `all` lẫn lần kết nối lại WebSocket, chỉ đếm một lần).
 
-**Chạy trên VPS** (dữ liệu liên tục; người dùng tự làm): `git clone` repo, chép `user_data/research/` (kho `pit/`,
-luật, `thresholds.json`, `fingerprints.jsonl`) lên; `docker compose up -d --build recorder forward`; log:
-`docker compose logs -f --tail 50 recorder forward`. Chỉ một bộ ghi và một runner cho mỗi thư mục dữ liệu (gỡ task
-Windows tương ứng bằng `-Remove`). Chép về: `rsync -av <vps>:<repo>/user_data/research/live/ user_data/research/live/`.
+**Chạy trên VPS** (dữ liệu liên tục): systemd user service trong venv, không Docker; cài, chuyển từ laptop, deploy tự
+động khi merge vào `main`, sao lưu: [deploy-vps.md](deploy-vps.md). Chỉ một bộ ghi và một runner cho mỗi thư mục dữ
+liệu (tắt task Windows tương ứng). Chép về: `rsync -av <vps>:signal-bot/user_data/research/live/
+user_data/research/live/`.
 **Nếu chạy trên laptop:** tắt chế độ ngủ khi cắm sạc (`powercfg /change standby-timeout-ac 0`,
 `powercfg /change hibernate-timeout-ac 0`, đóng nắp = Do nothing).
 

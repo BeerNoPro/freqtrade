@@ -2,7 +2,7 @@
 # Bộ ghi lưu những gì Binance không giữ lịch sử: thanh lý, giá mua/bán tốt nhất, funding dự kiến, sổ lệnh,
 # quyền chọn (IV, greeks, OI), thông tin sàn hằng ngày -> user_data/research/live.
 # Máy tắt hoặc ngủ thì khoảng đó mất dữ liệu (ghi lại trong user_data/research/live/_gaps.jsonl).
-# Trên VPS không dùng task này mà dùng service docker `recorder` (docker-compose.yml).
+# Trên VPS không dùng task này mà dùng systemd `signal-recorder.service` (docs/deploy-vps.md).
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\research\schedule_recorder.ps1          # đăng ký và chạy ngay
 #   powershell -ExecutionPolicy Bypass -File scripts\research\schedule_recorder.ps1 -Remove  # dừng và gỡ

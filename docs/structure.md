@@ -22,7 +22,8 @@ freqtrade/  (repo)
 │                       #   kiểm định tiến, bộ ghi dữ liệu; runner run_forward.py)
 │                       #   — xem docs/market-context-engine.md; test ở tests/research/
 ├── .gitattributes, .editorconfig, .pre-commit-config.yaml   # Chuẩn file text + git hook
-├── Dockerfile, docker-compose.yml   # Build image từ repo, chạy futures dry-run (triển khai VPS)
+├── deploy/             # VPS không Docker: setup_vps.sh, deploy.sh (deploy tự động khi merge vào main),
+│                       #   backup.sh, unit systemd — xem docs/deploy-vps.md
 ├── requirements.txt    # Toàn bộ thư viện để chạy bot (gồm hyperopt)
 ├── requirements-dev.txt # Công cụ phát triển: pytest, ruff, mypy, pre-commit (gồm requirements.txt)
 ├── pyproject.toml      # Build + cấu hình ruff / mypy / pytest / codespell

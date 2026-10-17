@@ -49,7 +49,7 @@ Telegram: tạo bot bằng @BotFather, điền `token` và `chat_id` vào config
 ```powershell
 # Kho dữ liệu point-in-time (nến, funding, OI của mọi perp, kể cả đã delist)
 .venv\Scripts\python.exe scripts\research\download_pit_universe.py
-# Runner kiểm định tiến và bộ ghi dữ liệu sàn chạy 24/7 (task Windows); VPS: docker compose up -d --build recorder forward
+# Runner kiểm định tiến và bộ ghi dữ liệu sàn chạy 24/7 (task Windows); VPS: systemd, xem docs/deploy-vps.md
 powershell -ExecutionPolicy Bypass -File scripts\research\schedule_forward.ps1
 powershell -ExecutionPolicy Bypass -File scripts\research\schedule_recorder.ps1
 # Tình trạng: nhật ký setup, độ phủ bộ ghi

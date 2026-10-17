@@ -16,6 +16,7 @@ xanh) và thêm một dòng vào bảng.
 | 2026-10-08 | Discord, phía consumer của Producer/Consumer, `MarketCapPairList`, `CrossMarketPairList`, `strategy-updater`, lệnh `edge` | Phía producer (`api_ws.py`, `ws/`) cho FreqUI; `coin_gecko` cho quy đổi fiat; `_validate_edge` |
 | 2026-10-08 | Plot (`freqtrade/plot/`, lệnh plot, notebook), orderflow + luồng trade realtime, `ft_client/` | `plot_config`, endpoint `/plot_config`, `plot_annotations` (FreqUI vẽ chỉ báo); tải trade lịch sử `--dl-trades` |
 | 2026-10-08 | Thư viện không còn ai import (`janus`, `aiofiles`, `pytz`, `scikit-learn`, `packaging`...) | Gói cần gián tiếp: `bottleneck`, `numexpr`, `certifi`, `urllib3`, `cryptography`, `httpx`, `prompt-toolkit`, `cmaes`, `ft-pandas-ta` |
+| 2026-10-17 | `Dockerfile`, `docker-compose.yml`, `.dockerignore` (service `freqtrade` trỏ strategy chưa có; image ~1,3 GB và daemon tốn RAM trên VPS 2 GB) | VPS chạy như laptop: venv + systemd user service, deploy tự động `deploy/` ([deploy-vps.md](deploy-vps.md)). Phần nhận biết môi trường docker trong core (`detect_environment`) giữ nguyên |
 
 ## Ghi chú môi trường (còn hiệu lực)
 - Không cài `aiodns`/`pycares`: `pycares 5.0.1` không phân giải DNS trên Windows làm ccxt báo `ExchangeNotAvailable`.

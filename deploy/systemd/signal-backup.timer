@@ -1,0 +1,10 @@
+# 03:30 UTC: after the runner's daily store sync (01:30 UTC) and the data audit (03:00 UTC).
+[Unit]
+Description=Signal bot: daily backup at 03:30 UTC
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

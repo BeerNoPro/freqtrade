@@ -1,7 +1,7 @@
 ﻿# Đăng ký Windows Task Scheduler chạy liên tục runner kiểm định tiến (scripts/research/run_forward.py).
 # Mỗi 4 giờ (đóng nến + 90 giây) runner cập nhật kho dữ liệu, ghi setup mới vào nhật ký TRƯỚC khi biết kết quả,
 # chấm setup đã đóng và đối chiếu với bản chạy lại. Máy ngủ thì setup bị lỡ được ghi bù (đánh dấu live_late).
-# Trên VPS không dùng task này mà dùng service docker `forward` (docker-compose.yml).
+# Trên VPS không dùng task này mà dùng systemd `signal-forward.service` (docs/deploy-vps.md).
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\research\schedule_forward.ps1          # đăng ký và chạy ngay
 #   powershell -ExecutionPolicy Bypass -File scripts\research\schedule_forward.ps1 -Remove  # dừng và gỡ

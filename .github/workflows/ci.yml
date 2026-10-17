@@ -12,7 +12,8 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # never cancel a run of main: its deploy job may be switching the server
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   tests:
@@ -45,3 +46,47 @@ jobs:
       - name: Tests
         run: |
           pytest --random-order -n auto -q --ignore=tests/exchange_online -p no:cacheprovider
+
+  # A push to main (a merged PR) deploys the commit to the VPS once the tests passed. The server
+  # does the checks (deploy/deploy.sh): preflight on the new code, safe moment, restart, verify,
+  # rollback. Secrets: VPS_HOST, VPS_USER, VPS_SSH_KEY (private half of a key whose public half
+  # is a forced-command line in the server's authorized_keys) and VPS_KNOWN_HOSTS (ssh-keyscan
+  # of the server), see docs/deploy-vps.md. This repository is public: nothing private is
+  # printed; the server only answers "deploy <sha>" or "status".
+  deploy:
+    name: Deploy to the VPS
+    needs: tests
+    if: >-
+      github.ref == 'refs/heads/main'
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    concurrency:
+      group: deploy-vps
+      cancel-in-progress: false
+    steps:
+      - name: Deploy over SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=60 "$VPS_USER@$VPS_HOST" "deploy $SHA"
+
+      - name: Server status
+        if: always()
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$VPS_USER@$VPS_HOST" status || true
+          rm -f ~/.ssh/deploy_key

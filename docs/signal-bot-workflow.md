@@ -15,7 +15,7 @@
 | Dữ liệu | Phát triển trên **2025 → nay**; khối lịch sử khóa 2023–2024 chỉ chạy một lần luật đã chốt; danh mục point-in-time |
 | Kiểm định | Chốt luật trước (fingerprint) → chạy dải phát triển một lần → kiểm định tiến trên dữ liệu sau ngày chốt → dry-run ≥ 4 tuần |
 | Khung thời gian | Theo luật được kiểm định (4h cho sự kiện, ngày cho xu hướng). Chi phí phải nhỏ so với 1R: setup có phí + trượt giá > 0,20R bị bỏ |
-| Nơi chạy | VPS 24/7 (docker) hoặc máy local (task Windows) |
+| Nơi chạy | VPS 24/7 (systemd, [deploy-vps.md](deploy-vps.md)) hoặc máy local (task Windows) |
 | Nơi nhận tin | Bot Telegram riêng, **chỉ gửi**, không nhận lệnh điều khiển. Nhãn "THỬ NGHIỆM" theo từng luật cho tới khi luật đạt mốc |
 | Giao diện | Giữ API server + WebSocket của Freqtrade (FreqUI); nhật ký setup, sổ rủi ro và độ phủ dữ liệu là nguồn cho màn hình UI sau này |
 
@@ -142,8 +142,8 @@ Sổ: rủi ro 0.25% → +0.49% vốn (+49 USDT)
    rồi `.env`, rồi `telegram.token` / `telegram.chat_id` trong `user_data/config.json`. **Giữ
    `telegram.enabled = false`**: đó là công tắc bot điều khiển của Freqtrade (nhận lệnh), runner không dùng nó.
 5. Kiểm tra bằng `run_forward.py --telegram-test` (gửi 1 tin), rồi bật gửi: `telegram_send: true` trong
-   `user_data/research/product.json` và khởi động lại runner. Trên VPS: đưa các biến trên vào môi trường của service
-   `forward` (ví dụ `env_file: .env` trong docker-compose).
+   `user_data/research/product.json` và khởi động lại runner. Trên VPS: chép `.env` vào `~/signal-bot/.env`
+   (`signal-forward.service` đọc nó, runner cũng tự đọc).
 
 Runner chỉ gọi `sendMessage`, không đọc tin đến (`getUpdates`) nên không ai điều khiển được bot. Token bị che trong mọi
 log và lỗi. Tin chờ gửi quá 6 giờ (mất mạng lâu) thì bỏ, vẫn còn trong `messages.log`; khi tắt gửi, tin chỉ lưu cục bộ
@@ -170,7 +170,8 @@ và bật lại không xả tin cũ. Nếu đưa bot vào group: đặt quyền 
 | Danh mục | `pairlists` tương đương luật point-in-time |
 | Tin nhắn | `self.dp.send_msg(...)`; theo dõi qua `/profit`, `/performance`, FreqUI |
 
-Strategy đặt trong `user_data/strategies/`; khi chốt tên, cập nhật `run.ps1` và `docker-compose.yml`. Kiểm chứng:
+Strategy đặt trong `user_data/strategies/`; khi chốt tên, cập nhật `run.ps1` và thêm một unit systemd cho
+`freqtrade trade` (cùng kiểu `deploy/systemd/signal-forward.service`). Kiểm chứng:
 skill `/validate-strategy` (lookahead, recursive, backtest). Secret chỉ trong config gitignore hoặc `FREQTRADE__...`.
 
 ## 9. Lộ trình
@@ -180,7 +181,7 @@ skill `/validate-strategy` (lookahead, recursive, backtest). Secret chỉ trong 
 | 0 | Tìm luật có lợi thế: chốt trước, dải phát triển một lần, kiểm định tiến. Trạng thái: `user_data/research/STATE.md` | Claude |
 | 1 | Luồng thử nghiệm: ngân sách rủi ro, tin đầy đủ, theo dõi tới khi đóng, tổng kết, cảnh báo (mục 3–7). Xong 2026-10-13 | Claude |
 | 2 | Bật Telegram thử nghiệm (nhãn rõ). Bật 2026-10-13 | Bạn duyệt |
-| 3 | Chạy VPS 24/7 (`docker compose up -d --build recorder forward`) | Bạn (Claude hướng dẫn) |
+| 3 | Chạy VPS 24/7 (systemd + deploy tự động khi merge vào `main`, [deploy-vps.md](deploy-vps.md)) | Cùng làm |
 | 4 | Luật đạt mốc → bỏ nhãn luật đó, dry-run ≥ 4 tuần, so với bản chạy lại | Cùng làm |
 | 5 | Giai đoạn 2: port Freqtrade, tự vào lệnh với vốn nhỏ | Quyết định sau |
 | — | Màn hình UI (setup, nhật ký, sổ rủi ro, độ phủ dữ liệu) trên API server / FreqUI | Khi cần |

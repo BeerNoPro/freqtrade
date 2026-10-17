@@ -21,7 +21,8 @@ journal.
         journal copy, no network ([--book-start ISO] [--now ISO])
     .venv/Scripts/python.exe scripts/research/run_forward.py --telegram-test  # one message
 
-Windows: ``scripts/research/schedule_forward.ps1``. VPS: service ``forward`` in docker-compose.yml.
+Windows: ``scripts/research/schedule_forward.ps1``. VPS: ``deploy/systemd/signal-forward.service``
+(docs/deploy-vps.md).
 """
 
 import argparse

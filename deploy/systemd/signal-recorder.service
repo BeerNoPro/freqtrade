@@ -1,0 +1,16 @@
+# Market data recorder (liquidations, best bid/ask, predicted funding, order book, options) into
+# user_data/research/live, as on the Windows task. systemd user unit, see signal-forward.service.
+[Unit]
+Description=Signal bot: market data recorder (scripts/research/record_market.py)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=%h/signal-bot/scripts/research
+Environment=PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8
+ExecStart=%h/signal-bot/.venv/bin/python record_market.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target

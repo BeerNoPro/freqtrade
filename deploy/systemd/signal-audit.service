@@ -1,0 +1,11 @@
+# Daily audit of the point-in-time store against Binance (scripts/research/audit_store.py), as
+# the Windows task freqtrade-data-audit; report in user_data/reports/audit/latest/.
+[Unit]
+Description=Signal bot: daily audit of the point-in-time store
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/signal-bot/scripts/research
+Environment=PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8
+ExecStart=%h/signal-bot/.venv/bin/python audit_store.py --verify 30
+TimeoutStartSec=2h
