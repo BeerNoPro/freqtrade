@@ -1,0 +1,20 @@
+# Forward-test runner + product layer (setups, risk book, Telegram), as on the Windows task.
+# systemd user unit of the bot account; lingering keeps it running without a login and after
+# a reboot. Installed by deploy/setup_vps.sh into ~/.config/systemd/user/.
+[Unit]
+Description=Signal bot: forward-test runner (scripts/research/run_forward.py)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=%h/signal-bot/scripts/research
+# Telegram token and chat id; the runner also reads ~/signal-bot/.env itself ("-": optional)
+EnvironmentFile=-%h/signal-bot/.env
+Environment=PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8
+ExecStart=%h/signal-bot/.venv/bin/python run_forward.py
+Restart=always
+RestartSec=30
+# the runner logs to user_data/logs/forward.log itself; journald keeps a short copy
+
+[Install]
+WantedBy=default.target

@@ -1203,3 +1203,70 @@ def test__get_spot_delist_schedule_binance(default_conf_usdt, mocker):
         "sapi_get_spot_delist_schedule",
         retries=1,
     )
+
+
+def test_fetch_funding_rates_binance(default_conf_usdt, mocker):
+    api_mock = MagicMock()
+    rates = {"ETH/USDT:USDT": {"fundingRate": 0.0001, "markPrice": 2.0}}
+    api_mock.fetch_funding_rates = MagicMock(return_value=rates)
+
+    # Spot has no funding rates
+    exchange = get_patched_exchange(mocker, default_conf_usdt, api_mock, exchange="binance")
+    assert exchange.fetch_funding_rates(["ETH/USDT:USDT"]) == {}
+    assert api_mock.fetch_funding_rates.call_count == 0
+
+    default_conf_usdt["trading_mode"] = "futures"
+    default_conf_usdt["margin_mode"] = "isolated"
+    exchange = get_patched_exchange(mocker, default_conf_usdt, api_mock, exchange="binance")
+    assert exchange.fetch_funding_rates(["ETH/USDT:USDT"]) == rates
+    api_mock.fetch_funding_rates.assert_called_once_with(["ETH/USDT:USDT"])
+
+    # No retrier on this method - every error is raised after a single call
+    ccxt_exceptionhandlers(
+        mocker,
+        default_conf_usdt,
+        api_mock,
+        "binance",
+        "fetch_funding_rates",
+        "fetch_funding_rates",
+        retries=1,
+        symbols=["ETH/USDT:USDT"],
+    )
+
+
+def test_fetch_stoploss_order_binance_triggered_algo(default_conf_usdt, mocker):
+    default_conf_usdt["dry_run"] = False
+    default_conf_usdt["trading_mode"] = "futures"
+    default_conf_usdt["margin_mode"] = "isolated"
+    algo_order = {
+        "id": "algo1",
+        "symbol": "ETH/USDT:USDT",
+        "status": "closed",
+        "stopPrice": 1.8,
+        "info": {"actualOrderId": "real1"},
+    }
+    real_order = {"id": "real1", "symbol": "ETH/USDT:USDT", "status": "closed", "average": 1.79}
+    api_mock = MagicMock()
+    api_mock.fetch_order = MagicMock(side_effect=[algo_order, real_order])
+    mocker.patch(f"{EXMS}.exchange_has", return_value=True)
+    exchange = get_patched_exchange(mocker, default_conf_usdt, api_mock, exchange="binance")
+
+    res = exchange.fetch_stoploss_order("algo1", "ETH/USDT:USDT")
+    # Binance futures stop orders are algo orders - the triggered order is fetched as well
+    assert api_mock.fetch_order.call_count == 2
+    assert api_mock.fetch_order.call_args_list[0][0][0] == "algo1"
+    assert api_mock.fetch_order.call_args_list[0][1]["params"] == {"stop": True}
+    assert api_mock.fetch_order.call_args_list[1][0][0] == "real1"
+    assert res["id"] == "algo1"
+    assert res["id_stop"] == "real1"
+    assert res["type"] == "stoploss"
+    assert res["status_stop"] == "triggered"
+    assert res["stopPrice"] == 1.8
+    assert res["average"] == 1.79
+
+    # Algo order not triggered yet - returned unchanged
+    open_algo = {**algo_order, "status": "open"}
+    api_mock.fetch_order = MagicMock(return_value=open_algo)
+    exchange = get_patched_exchange(mocker, default_conf_usdt, api_mock, exchange="binance")
+    assert exchange.fetch_stoploss_order("algo1", "ETH/USDT:USDT")["status"] == "open"
+    assert api_mock.fetch_order.call_count == 1

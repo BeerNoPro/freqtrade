@@ -1,0 +1,11 @@
+# Daily push of the backups and the recorder's compacted days to Google Drive (deploy/offload.sh),
+# started by signal-offload.timer.
+[Unit]
+Description=Signal bot: push backups and recorder days to Google Drive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/signal-bot/deploy/offload.sh
+TimeoutStartSec=2h

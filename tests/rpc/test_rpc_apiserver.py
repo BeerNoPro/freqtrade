@@ -41,6 +41,7 @@ from freqtrade.rpc.api_server.api_auth import create_token, get_user_from_token
 from freqtrade.rpc.api_server.api_schemas import StrategyName
 from freqtrade.rpc.api_server.uvicorn_threaded import UvicornServer
 from freqtrade.rpc.api_server.webserver_bgwork import ApiBG
+from freqtrade.strategy import IStrategy
 from freqtrade.util.datetime_helpers import format_date
 from tests.conftest import (
     CURRENT_TEST_STRATEGY,
@@ -2366,7 +2367,7 @@ def test_api_pair_history(botclient, tmp_path, mocker):
     _ftbot.config["user_data_dir"] = tmp_path
 
     timeframe = "5m"
-    lfm = mocker.patch("freqtrade.strategy.interface.IStrategy.load_freqAI_model")
+    bot_start_spy = mocker.spy(IStrategy, "ft_bot_start")
     # Wrong mode
     rc = client_get(
         client,
@@ -2456,7 +2457,7 @@ def test_api_pair_history(botclient, tmp_path, mocker):
         assert data[0][date_col_idx] == "2018-01-11T00:00:00Z"
         assert data[0][rsi_col_idx] is not None
         assert data[0][rsi_col_idx] > 0
-        assert lfm.call_count == 1
+        assert bot_start_spy.call_count == 1
         assert result["pair"] == "UNITTEST/BTC"
         assert result["strategy"] == CURRENT_TEST_STRATEGY
         assert result["data_start"] == "2018-01-11 00:00:00+00:00"
@@ -2464,7 +2465,7 @@ def test_api_pair_history(botclient, tmp_path, mocker):
         assert result["data_stop"] == "2018-01-12 00:00:00+00:00"
         assert result["data_stop_ts"] == 1515715200000
         assert result["annotations"] == []
-        lfm.reset_mock()
+        bot_start_spy.reset_mock()
 
         # No data found
         if call == "get":
@@ -2515,7 +2516,7 @@ def test_api_pair_history(botclient, tmp_path, mocker):
             f"After trimming by startup_candle_count, no data for UNITTEST/BTC, 5m "
             f"in {trim_timerange} left."
         )
-        lfm.reset_mock()
+        bot_start_spy.reset_mock()
 
     # No strategy
     rc = client_post(
@@ -2570,7 +2571,6 @@ def test_api_pair_history_live_mode(botclient, tmp_path, mocker):
     _ftbot.config["user_data_dir"] = tmp_path
     _ftbot.config["runmode"] = RunMode.WEBSERVER
 
-    mocker.patch("freqtrade.strategy.interface.IStrategy.load_freqAI_model")
     # no strategy, live data
     gho = mocker.patch(
         "freqtrade.exchange.binance.Binance.get_historic_ohlcv",
@@ -2649,12 +2649,6 @@ def test_api_plot_config(botclient, mocker, tmp_path):
     assert isinstance(rc.json()["main_plot"], dict)
     assert isinstance(rc.json()["subplots"], dict)
 
-    rc = client_get(client, f"{BASE_URI}/plot_config?strategy=freqai_test_classifier")
-    assert_response(rc)
-    res = rc.json()
-    assert "target_roi" in res["subplots"]
-    assert "do_predict" in res["subplots"]
-
     rc = client_get(client, f"{BASE_URI}/plot_config?strategy=HyperoptableStrategy")
     assert_response(rc)
     assert rc.json()["subplots"] == {}
@@ -2688,11 +2682,6 @@ def test_api_strategies(botclient, tmp_path):
             "StrategyTestV3",
             "StrategyTestV3CustomEntryPrice",
             "StrategyTestV3Futures",
-            "freqai_rl_test_strat",
-            "freqai_test_classifier",
-            "freqai_test_multimodel_classifier_strat",
-            "freqai_test_multimodel_strat",
-            "freqai_test_strat",
             "strategy_test_v3_recursive_issue",
         ]
     }
@@ -2803,22 +2792,20 @@ def test_api_exchanges(botclient):
     response = rc.json()
     assert isinstance(response["exchanges"], list)
     assert len(response["exchanges"]) > 20
-    okx = next(x for x in response["exchanges"] if x["classname"] == "okx")
-    assert okx == {
-        "classname": "okx",
-        "name": "OKX",
+    binance = next(x for x in response["exchanges"] if x["classname"] == "binance")
+    assert binance == {
+        "classname": "binance",
+        "name": "Binance",
         "valid": True,
         "supported": True,
-        "comment": "",
+        "comment": ANY,
         "comment_futures": ANY,
         "dex": False,
         "is_alias": False,
         "alias_for": None,
-        "trade_modes": [
-            {"trading_mode": "spot", "margin_mode": ""},
-            {"trading_mode": "futures", "margin_mode": "isolated"},
-        ],
+        "trade_modes": ANY,
     }
+    assert {"trading_mode": "futures", "margin_mode": "isolated"} in binance["trade_modes"]
 
     mexc = next(x for x in response["exchanges"] if x["classname"] == "mexc")
     assert mexc == {
@@ -2863,51 +2850,6 @@ def test_list_hyperoptloss(botclient, tmp_path):
     assert len(sharpeloss) == 1
     assert "Sharpe Ratio calculation" in sharpeloss[0]["description"]
     assert len([r for r in response["loss_functions"] if r["name"] == "SortinoHyperOptLoss"]) == 1
-
-
-def test_api_freqaimodels(botclient, tmp_path, mocker):
-    ftbot, client = botclient
-    ftbot.config["user_data_dir"] = tmp_path
-    ftbot.config["runmode"] = RunMode.WEBSERVER
-
-    mocker.patch(
-        "freqtrade.resolvers.freqaimodel_resolver.FreqaiModelResolver.search_all_objects",
-        return_value=[
-            {"name": "LightGBMClassifier"},
-            {"name": "LightGBMClassifierMultiTarget"},
-            {"name": "LightGBMRegressor"},
-            {"name": "LightGBMRegressorMultiTarget"},
-            {"name": "ReinforcementLearner"},
-            {"name": "ReinforcementLearner_multiproc"},
-            {"name": "SKlearnRandomForestClassifier"},
-            {"name": "XGBoostClassifier"},
-            {"name": "XGBoostRFClassifier"},
-            {"name": "XGBoostRFRegressor"},
-            {"name": "XGBoostRegressor"},
-            {"name": "XGBoostRegressorMultiTarget"},
-        ],
-    )
-
-    rc = client_get(client, f"{BASE_URI}/freqaimodels")
-
-    assert_response(rc)
-
-    assert rc.json() == {
-        "freqaimodels": [
-            "LightGBMClassifier",
-            "LightGBMClassifierMultiTarget",
-            "LightGBMRegressor",
-            "LightGBMRegressorMultiTarget",
-            "ReinforcementLearner",
-            "ReinforcementLearner_multiproc",
-            "SKlearnRandomForestClassifier",
-            "XGBoostClassifier",
-            "XGBoostRFClassifier",
-            "XGBoostRFRegressor",
-            "XGBoostRegressor",
-            "XGBoostRegressorMultiTarget",
-        ]
-    }
 
 
 def test_api_pairlists_available(botclient, tmp_path):
@@ -3194,6 +3136,20 @@ def test_sysinfo(botclient):
 
     assert isinstance(result["cpu_load"], list)
     assert isinstance(result["cpu_load"][0], dict)
+
+
+def test_sysinfo_load_avg_unavailable(botclient, mocker, caplog):
+    # Windows hosts with disabled performance counters make psutil.getloadavg() raise.
+    _ftbot, client = botclient
+    mocker.patch(
+        "freqtrade.rpc.rpc.psutil.getloadavg",
+        side_effect=RuntimeError("PdhAddEnglishCounterW failed."),
+    )
+
+    rc = client_get(client, f"{BASE_URI}/sysinfo")
+    assert_response(rc)
+    assert rc.json()["cpu_load_avg"] == {"1m": 0.0, "5m": 0.0, "15m": 0.0}
+    assert log_has_re(r"Could not read system load average: .*PdhAddEnglishCounterW", caplog)
 
 
 def test_api_backtesting(botclient, mocker, fee, caplog, tmp_path):

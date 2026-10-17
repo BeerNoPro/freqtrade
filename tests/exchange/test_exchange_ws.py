@@ -11,7 +11,7 @@ from ccxt import NotSupported
 from freqtrade.enums import CandleType
 from freqtrade.exceptions import TemporaryError
 from freqtrade.exchange.exchange_ws import ExchangeWS
-from ft_client.test_client.test_rest_client import log_has_re
+from tests.conftest import log_has_re
 
 
 def test_exchangews_init(mocker):

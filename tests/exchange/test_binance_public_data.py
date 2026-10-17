@@ -20,7 +20,7 @@ from freqtrade.exchange.binance_public_data import (
     get_daily_trades,
 )
 from freqtrade.util.datetime_helpers import dt_ts, dt_utc
-from ft_client.test_client.test_rest_client import log_has_re
+from tests.conftest import log_has_re
 
 
 class MockResponse:

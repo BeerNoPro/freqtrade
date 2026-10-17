@@ -31,13 +31,6 @@ class RPCManager:
 
             self.registered_modules.append(Telegram(self._rpc, config))
 
-        # Enable discord
-        if config.get("discord", {}).get("enabled", False):
-            logger.info("Enabling rpc.discord ...")
-            from freqtrade.rpc.discord import Discord
-
-            self.registered_modules.append(Discord(self._rpc, config))
-
         # Enable Webhook
         if config.get("webhook", {}).get("enabled", False):
             logger.info("Enabling rpc.webhook ...")

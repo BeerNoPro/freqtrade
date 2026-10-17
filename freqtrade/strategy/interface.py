@@ -11,9 +11,7 @@ from math import isinf, isnan
 from pandas import DataFrame
 from pydantic import ValidationError
 
-from freqtrade.configuration import TimeRange
 from freqtrade.constants import CUSTOM_TAG_MAX_LENGTH, Config, IntOrInf, ListPairsWithTimeframes
-from freqtrade.data.converter import populate_dataframe_with_trades
 from freqtrade.data.converter.converter import reduce_dataframe_footprint
 from freqtrade.data.dataprovider import DataProvider
 from freqtrade.enums import (
@@ -42,7 +40,7 @@ from freqtrade.strategy.informative_decorator import (
 )
 from freqtrade.strategy.strategy_validation import StrategyResultValidator
 from freqtrade.strategy.strategy_wrapper import strategy_safe_wrapper
-from freqtrade.util import dt_now, dt_ts
+from freqtrade.util import dt_now
 from freqtrade.wallets import Wallets
 
 
@@ -147,9 +145,6 @@ class IStrategy(ABC, HyperStrategyMixin):
     # A self set parameter that represents the market direction. filled from configuration
     market_direction: MarketDirection = MarketDirection.NONE
 
-    # Global cache dictionary
-    _cached_grouped_trades_per_pair: dict[str, DataFrame] = {}
-
     def __init__(self, config: Config) -> None:
         self.config = config
         # Dict to determine if analysis is necessary
@@ -183,54 +178,14 @@ class IStrategy(ABC, HyperStrategyMixin):
         ):
             self._ft_informative_cache = InformativeCache(maxsize=500)
 
-    def load_freqAI_model(self) -> None:
-        if self.config.get("freqai", {}).get("enabled", False):
-            # Import here to avoid importing this if freqAI is disabled
-            from freqtrade.freqai.utils import download_all_data_for_training
-            from freqtrade.resolvers.freqaimodel_resolver import FreqaiModelResolver
-
-            self.freqai = FreqaiModelResolver.load_freqaimodel(self.config)
-            self.freqai_info = self.config["freqai"]
-
-            # download the desired data in dry/live
-            if self.config.get("runmode") in (RunMode.DRY_RUN, RunMode.LIVE):
-                logger.info(
-                    "Downloading all training data for all pairs in whitelist and "
-                    "corr_pairlist, this may take a while if the data is not "
-                    "already on disk."
-                )
-                download_all_data_for_training(self.dp, self.config)
-        else:
-            # Gracious failures if freqAI is disabled but "start" is called.
-            class DummyClass:
-                def start(self, *args, **kwargs):
-                    raise OperationalException(
-                        "freqAI is not enabled. "
-                        "Please enable it in your config to use this strategy."
-                    )
-
-                def shutdown(self, *args, **kwargs):
-                    pass
-
-            self.freqai = DummyClass()  # type: ignore
-
     def ft_bot_start(self, **kwargs) -> None:
         """
         Strategy init - runs after dataprovider has been added.
         Must call bot_start()
         """
-        self.load_freqAI_model()
-
         strategy_safe_wrapper(self.bot_start)()
 
         self.ft_load_hyper_params(self.config.get("runmode") == RunMode.HYPEROPT)
-
-    def ft_bot_cleanup(self) -> None:
-        """
-        Clean up FreqAI and child threads
-        """
-        if getattr(self, "freqai", None):
-            self.freqai.shutdown()
 
     @abstractmethod
     def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
@@ -891,129 +846,6 @@ class IStrategy(ABC, HyperStrategyMixin):
         """
         return []
 
-    def populate_any_indicators(
-        self,
-        pair: str,
-        df: DataFrame,
-        tf: str,
-        informative: DataFrame | None = None,
-        set_generalized_indicators: bool = False,
-    ) -> DataFrame:
-        """
-        DEPRECATED - USE FEATURE ENGINEERING FUNCTIONS INSTEAD
-        Function designed to automatically generate, name and merge features
-        from user indicated timeframes in the configuration file. User can add
-        additional features here, but must follow the naming convention.
-        This method is *only* used in FreqaiDataKitchen class and therefore
-        it is only called if FreqAI is active.
-        :param pair: pair to be used as informative
-        :param df: strategy dataframe which will receive merges from informatives
-        :param tf: timeframe of the dataframe which will modify the feature names
-        :param informative: the dataframe associated with the informative pair
-        """
-        return df
-
-    def feature_engineering_expand_all(
-        self, dataframe: DataFrame, period: int, metadata: dict, **kwargs
-    ) -> DataFrame:
-        """
-        *Only functional with FreqAI enabled strategies*
-        This function will automatically expand the defined features on the config defined
-        `indicator_periods_candles`, `include_timeframes`, `include_shifted_candles`, and
-        `include_corr_pairs`. In other words, a single feature defined in this function
-        will automatically expand to a total of
-        `indicator_periods_candles` * `include_timeframes` * `include_shifted_candles` *
-        `include_corr_pairs` numbers of features added to the model.
-
-        All features must be prepended with `%` to be recognized by FreqAI internals.
-
-        More details on how these config defined parameters accelerate feature engineering
-        in the documentation at:
-
-        https://www.freqtrade.io/en/stable/freqai-parameter-table/#feature-parameters
-
-        https://www.freqtrade.io/en/stable/freqai-feature-engineering/#defining-the-features
-
-        :param dataframe: strategy dataframe which will receive the features
-        :param period: period of the indicator - usage example:
-        :param metadata: metadata of current pair
-        dataframe["%-ema-period"] = ta.EMA(dataframe, timeperiod=period)
-        """
-        return dataframe
-
-    def feature_engineering_expand_basic(
-        self, dataframe: DataFrame, metadata: dict, **kwargs
-    ) -> DataFrame:
-        """
-        *Only functional with FreqAI enabled strategies*
-        This function will automatically expand the defined features on the config defined
-        `include_timeframes`, `include_shifted_candles`, and `include_corr_pairs`.
-        In other words, a single feature defined in this function
-        will automatically expand to a total of
-        `include_timeframes` * `include_shifted_candles` * `include_corr_pairs`
-        numbers of features added to the model.
-
-        Features defined here will *not* be automatically duplicated on user defined
-        `indicator_periods_candles`
-
-        All features must be prepended with `%` to be recognized by FreqAI internals.
-
-        More details on how these config defined parameters accelerate feature engineering
-        in the documentation at:
-
-        https://www.freqtrade.io/en/stable/freqai-parameter-table/#feature-parameters
-
-        https://www.freqtrade.io/en/stable/freqai-feature-engineering/#defining-the-features
-
-        :param dataframe: strategy dataframe which will receive the features
-        :param metadata: metadata of current pair
-        dataframe["%-pct-change"] = dataframe["close"].pct_change()
-        dataframe["%-ema-200"] = ta.EMA(dataframe, timeperiod=200)
-        """
-        return dataframe
-
-    def feature_engineering_standard(
-        self, dataframe: DataFrame, metadata: dict, **kwargs
-    ) -> DataFrame:
-        """
-        *Only functional with FreqAI enabled strategies*
-        This optional function will be called once with the dataframe of the base timeframe.
-        This is the final function to be called, which means that the dataframe entering this
-        function will contain all the features and columns created by all other
-        freqai_feature_engineering_* functions.
-
-        This function is a good place to do custom exotic feature extractions (e.g. tsfresh).
-        This function is a good place for any feature that should not be auto-expanded upon
-        (e.g. day of the week).
-
-        All features must be prepended with `%` to be recognized by FreqAI internals.
-
-        More details about feature engineering available:
-
-        https://www.freqtrade.io/en/stable/freqai-feature-engineering
-
-        :param dataframe: strategy dataframe which will receive the features
-        :param metadata: metadata of current pair
-        usage example: dataframe["%-day_of_week"] = (dataframe["date"].dt.dayofweek + 1) / 7
-        """
-        return dataframe
-
-    def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs) -> DataFrame:
-        """
-        *Only functional with FreqAI enabled strategies*
-        Required function to set the targets for the model.
-        All targets must be prepended with `&` to be recognized by the FreqAI internals.
-
-        More details about feature engineering available:
-
-        https://www.freqtrade.io/en/stable/freqai-feature-engineering
-
-        :param dataframe: strategy dataframe which will receive the targets
-        :param metadata: metadata of current pair
-        usage example: dataframe["&-target"] = dataframe["close"].shift(-1) / dataframe["close"]
-        """
-        return dataframe
-
     ###
     # END - Intended to be overridden by strategy
     ###
@@ -1062,22 +894,6 @@ class IStrategy(ABC, HyperStrategyMixin):
             stake_amount = resp
         return stake_amount, order_tag
 
-    def __informative_pairs_freqai(self) -> ListPairsWithTimeframes:
-        """
-        Create informative-pairs needed for FreqAI
-        """
-        if self.config.get("freqai", {}).get("enabled", False):
-            whitelist_pairs = self.dp.current_whitelist()
-            candle_type = self.config.get("candle_type_def", CandleType.SPOT)
-            corr_pairs = self.config["freqai"]["feature_parameters"]["include_corr_pairlist"]
-            informative_pairs = []
-            for tf in self.config["freqai"]["feature_parameters"]["include_timeframes"]:
-                for pair in set(whitelist_pairs + corr_pairs):
-                    informative_pairs.append((pair, tf, candle_type))
-            return informative_pairs
-
-        return []
-
     def gather_informative_pairs(self) -> ListPairsWithTimeframes:
         """
         Internal method which gathers all informative pairs (user or automatically defined).
@@ -1123,7 +939,6 @@ class IStrategy(ABC, HyperStrategyMixin):
             else:
                 for pair in self.dp.current_whitelist():
                     informative_pairs.append((pair, inf_data.timeframe, candle_type))
-        informative_pairs.extend(self.__informative_pairs_freqai())
         return list(set(informative_pairs))
 
     def get_strategy_name(self) -> str:
@@ -1787,33 +1602,6 @@ class IStrategy(ABC, HyperStrategyMixin):
         dataframe = self.advise_exit(dataframe, metadata)
         return dataframe
 
-    def _if_enabled_populate_trades(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
-        use_public_trades = self.config.get("exchange", {}).get("use_public_trades", False)
-        if use_public_trades:
-            pair = metadata["pair"]
-            # Build timerange from dataframe date column
-            if not dataframe.empty:
-                start_ts = dt_ts(dataframe["date"].iloc[0])
-                end_ts = dt_ts(dataframe["date"].iloc[-1])
-                timerange = TimeRange("date", "date", startts=start_ts, stopts=end_ts)
-            else:
-                timerange = None
-
-            trades = self.dp.trades(pair=pair, copy=False, timerange=timerange)
-
-            cached_grouped_trades: DataFrame | None = self._cached_grouped_trades_per_pair.get(pair)
-            dataframe, cached_grouped_trades = populate_dataframe_with_trades(
-                cached_grouped_trades, self.config, dataframe, trades
-            )
-
-            # dereference old cache
-            if pair in self._cached_grouped_trades_per_pair:
-                del self._cached_grouped_trades_per_pair[pair]
-            self._cached_grouped_trades_per_pair[pair] = cached_grouped_trades
-
-            logger.debug("Populated dataframe with trades.")
-        return dataframe
-
     def advise_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         """
         Populate indicators that will be used in the Buy, Sell, short, exit_short strategy
@@ -1830,7 +1618,6 @@ class IStrategy(ABC, HyperStrategyMixin):
                 self, dataframe, metadata, inf_data, populate_fn
             )
 
-        dataframe = self._if_enabled_populate_trades(dataframe, metadata)
         dataframe = self.populate_indicators(dataframe, metadata)
         if self.config.get("reduce_df_footprint", False) and self.config.get("runmode") not in [
             RunMode.DRY_RUN,
@@ -1877,7 +1664,7 @@ class IStrategy(ABC, HyperStrategyMixin):
 
     def ft_plot_annotations(self, pair: str, dataframe: DataFrame) -> list[AnnotationType]:
         """
-        Internal wrapper around plot_dataframe
+        Internal wrapper around plot_annotations (chart annotations served to FreqUI)
         """
         if len(dataframe) > 0:
             annotations = strategy_safe_wrapper(self.plot_annotations)(

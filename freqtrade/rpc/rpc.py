@@ -1770,7 +1770,13 @@ class RPC:
     @staticmethod
     def _rpc_sysinfo() -> dict[str, Any]:
         cpu_pct = psutil.cpu_percent(interval=0.1, percpu=True)
-        load_avg = psutil.getloadavg()
+        try:
+            load_avg = psutil.getloadavg()
+        except (RuntimeError, OSError) as e:
+            # On Windows psutil emulates the load average with performance counters,
+            # which fail when the counters are disabled on the host.
+            logger.warning(f"Could not read system load average: {e}")
+            load_avg = (0.0, 0.0, 0.0)
         return {
             "cpu_pct": cpu_pct,  # Deprecated, use cpu_load instead
             "cpu_load": [

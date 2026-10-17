@@ -1,0 +1,8 @@
+# Daily backup of the forward-test journal, the risk book and the private rule files
+# (deploy/backup.sh), started by signal-backup.timer.
+[Unit]
+Description=Signal bot: daily backup of the journal and the private rules
+
+[Service]
+Type=oneshot
+ExecStart=%h/signal-bot/deploy/backup.sh

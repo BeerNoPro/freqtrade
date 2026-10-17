@@ -9,7 +9,6 @@
 - [informative_decorator.py](informative_decorator.py) — decorator `@informative()` lấy dữ liệu timeframe/cặp khác.
 - [strategy_helper.py](strategy_helper.py) — helper như `merge_informative_pair`, `stoploss_from_open`.
 - [strategy_wrapper.py](strategy_wrapper.py) — `strategy_safe_wrapper` bọc lỗi callback của user.
-- [strategyupdater.py](strategyupdater.py) — tự nâng cấp strategy cũ lên API mới.
 
 ## Các hook quan trọng (override trong strategy của bạn)
 

@@ -1,0 +1,265 @@
+"""
+Download research data for every Binance USDT-M crypto perpetual that ever traded (delisted
+included): the point-in-time universe and the inputs of models trained on it.
+
+    .venv/Scripts/python.exe scripts/research/download_pit_universe.py
+    .venv/Scripts/python.exe scripts/research/download_pit_universe.py --symbols BTCUSDT LUNAUSDT
+    .venv/Scripts/python.exe scripts/research/download_pit_universe.py --outdir <store> --plan-only
+
+Daily candles: every candidate symbol (crypto underlying, see ``mce.universe.is_candidate``),
+used to rank the universe. Funding, candles of the other ``--intervals`` and positioning metrics:
+only symbols that are ever among the top ``--top + --spare`` (spares cover robustness runs that
+drop a coin and re-rank), from ``--warmup-days`` before they first enter it. Rows before
+``--start`` and files of other symbols are deleted, so the store only holds the current research
+window plus warmup.
+"""
+
+import argparse
+import json
+import logging
+import time
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
+
+import ccxt
+import pandas as pd
+import requests
+from mce.archive import (
+    list_um_usdt_symbols,
+    load_wide,
+    missing,
+    prune,
+    sync_from_archive,
+    sync_funding,
+    sync_klines,
+    sync_metrics,
+    underlying_types,
+)
+from mce.universe import is_candidate, point_in_time_members
+
+
+logger = logging.getLogger(__name__)
+
+
+NETWORK_ERRORS = (ccxt.NetworkError, requests.ConnectionError, requests.Timeout)
+RETRY_WAITS = (10.0, 30.0, 90.0)  # seconds; a Wi-Fi drop on the research laptop lasts 7-15 s
+
+
+def _sync_all(
+    label: str,
+    fn: Callable[[str, int], int],
+    starts: dict[str, pd.Timestamp],
+    failed: list[str] | None = None,
+    waits: tuple[float, ...] = RETRY_WAITS,
+    sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    """Run ``fn(symbol, start_ms)`` for every symbol; errors are logged and skipped. A network
+    error (DNS, timeout, connection) is retried after each of ``waits``; a symbol still lost is
+    appended to ``failed`` (a rerun fetches it). Exchange rejections (a delisted symbol the API
+    no longer knows) are neither retried nor counted: the monthly archive fallback covers them."""
+    added = 0
+    for i, (symbol, start) in enumerate(starts.items(), 1):
+        for attempt in range(len(waits) + 1):
+            try:
+                added += fn(symbol, int(start.timestamp() * 1000))
+                break
+            except NETWORK_ERRORS as e:
+                if attempt < len(waits):
+                    logger.warning(
+                        "%s %s: network error, retry in %.0fs: %s", label, symbol, waits[attempt], e
+                    )
+                    sleep(waits[attempt])
+                    continue
+                logger.warning("%s %s failed: %s", label, symbol, e)
+                if failed is not None:
+                    failed.append(symbol)
+            except (ccxt.BaseError, requests.RequestException) as e:
+                logger.warning("%s %s failed: %s", label, symbol, e)
+                break
+        if i % 100 == 0:
+            logger.info("%s: %d/%d symbols", label, i, len(starts))
+    return added
+
+
+def _fill_from_archive(outdir: Path, kind: str, starts: dict[str, pd.Timestamp]) -> list[str]:
+    """Rebuild files the API could not serve from the monthly archive; return still missing."""
+    for symbol in missing(outdir, kind, list(starts)):
+        try:
+            n = sync_from_archive(symbol, outdir, kind, starts[symbol])
+            logger.info("%s %s: +%d rows from the monthly archive", kind, symbol, n)
+        except requests.RequestException as e:
+            logger.warning("%s %s archive fallback failed: %s", kind, symbol, e)
+    return missing(outdir, kind, list(starts))
+
+
+def _klines_fn(exchange: ccxt.Exchange, outdir: Path, interval: str) -> Callable[[str, int], int]:
+    def fetch(symbol: str, start_ms: int) -> int:
+        return sync_klines(exchange, symbol, outdir, start_ms, interval)
+
+    return fetch
+
+
+def first_member_dates(
+    outdir: Path, symbols: list[str], n: int, min_history: int
+) -> dict[str, pd.Timestamp]:
+    """Symbol -> first day it is a member of the top ``n`` point-in-time universe, ranked on the
+    raw candles (fake ones included): the set decides which files ``prune`` keeps, so it must not
+    shrink when the research loader changes how it reads them."""
+    close = load_wide(outdir, "klines_1d", "close", symbols, raw=True)
+    volume = load_wide(outdir, "klines_1d", "quote_volume", symbols, raw=True)
+    days = pd.date_range(close.index.min(), close.index.max(), freq="D")
+    members = point_in_time_members(
+        close.reindex(days), volume.reindex(days), n=n, min_history=min_history
+    )
+    members = members.loc[:, members.any()]
+    return {s: members.index[members[s]].min() for s in sorted(members.columns)}
+
+
+def failure_line(failed: dict[str, list[str]], show: int = 10) -> str:
+    """One summary line of the symbols lost to network errors per kind ('' when none)."""
+    parts = []
+    for kind, symbols in failed.items():
+        if symbols:
+            more = f" (+{len(symbols) - show} more)" if len(symbols) > show else ""
+            parts.append(f"{kind} {len(symbols)}: {' '.join(symbols[:show])}{more}")
+    return ("FAILED (network, rerun to fetch) " + "; ".join(parts)) if parts else ""
+
+
+def estimate_volume(
+    starts: dict[str, pd.Timestamp],
+    end: pd.Timestamp,
+    have_metrics: dict[str, set[str]] | None = None,
+) -> dict[str, int]:
+    """Symbols, symbol-days in [start, end) and daily metrics files not stored yet
+    (``have_metrics``: symbol -> stored ``YYYY-MM-DD`` days). The archive serves one metrics file
+    per symbol-day, the heaviest part of a sync."""
+    have = have_metrics or {}
+    total = missing = 0
+    for symbol, start in starts.items():
+        if start > end:
+            raise ValueError(f"{symbol}: start {start} after end {end}")
+        last = end - pd.Timedelta(days=1)  # end is exclusive
+        days = pd.date_range(start.floor("D"), last, freq="D").strftime("%Y-%m-%d")
+        total += len(days)
+        missing += len(set(days) - have.get(symbol, set()))
+    return {"symbols": len(starts), "symbol_days": total, "metrics_files_missing": missing}
+
+
+def _stored_days(outdir: Path, kind: str, symbols: list[str]) -> dict[str, set[str]]:
+    days = {}
+    for symbol in symbols:
+        path = outdir / kind / f"{symbol}.parquet"
+        if path.exists():
+            dates = pd.read_parquet(path, columns=["date"])["date"]
+            days[symbol] = set(dates.dt.strftime("%Y-%m-%d"))
+    return days
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    parser.add_argument("--outdir", type=Path, default=Path("user_data/research/pit"))
+    parser.add_argument("--start", default="2024-01-01", help="warmup start, older rows deleted")
+    parser.add_argument("--top", type=int, default=20)
+    parser.add_argument("--spare", type=int, default=5)
+    parser.add_argument("--min-history", type=int, default=90, help="consecutive daily closes")
+    parser.add_argument("--intervals", nargs="+", default=["1d", "4h"])
+    parser.add_argument("--warmup-days", type=int, default=100)
+    parser.add_argument("--symbols", nargs="+", help="raw symbols, default: whole archive")
+    parser.add_argument(
+        "--plan-only",
+        action="store_true",
+        help="sync daily candles only, print the volume of the other kinds and stop",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 2 when a symbol was lost to a network error (the runner's daily sync omits it)",
+    )
+    args = parser.parse_args()
+    failed: dict[str, list[str]] = {}
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+
+    start = pd.Timestamp(args.start, tz="UTC")
+    exchange = ccxt.binanceusdm({"enableRateLimit": True})
+    underlying = underlying_types(exchange)
+    archive = args.symbols or list_um_usdt_symbols()
+    candidates = [s for s in archive if is_candidate(s, *underlying.get(s, [None, []]))]
+    args.outdir.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "listed_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "start": args.start,
+        "archive": archive,
+        "underlying": {s: underlying.get(s) for s in archive},
+        "candidates": candidates,
+    }
+    (args.outdir / "symbols.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
+    logger.info("%d symbols in archive, %d crypto candidates", len(archive), len(candidates))
+
+    removed = prune(args.outdir, "klines_1d", candidates, start)
+    every = dict.fromkeys(candidates, start)
+    added = _sync_all(
+        "klines_1d",
+        lambda s, t: sync_klines(exchange, s, args.outdir, t),
+        every,
+        failed.setdefault("klines_1d", []),
+    )
+    lost = _fill_from_archive(args.outdir, "klines_1d", every)
+    print(f"klines_1d +{added} rows, {removed} stale files deleted; no data for {lost}")
+
+    firsts = first_member_dates(args.outdir, candidates, args.top + args.spare, args.min_history)
+    warm = pd.Timedelta(days=args.warmup_days)
+    starts = {s: max(start, d - warm) for s, d in firsts.items()}
+    if args.plan_only:
+        today = pd.Timestamp.now(tz="UTC").floor("D")
+        have = _stored_days(args.outdir, "metrics", list(starts))
+        est = estimate_volume(starts, today, have)
+        print(f"plan for {args.outdir} from {args.start}: {est}")
+        print(f"  funding and klines {args.intervals} for {est['symbols']} symbols; metrics:")
+        print(f"  {est['metrics_files_missing']} daily archive files to fetch")
+        _finish(failed, args.strict)
+        return
+    removed = prune(args.outdir, "funding", list(starts), start)
+    added = _sync_all(
+        "funding",
+        lambda s, t: sync_funding(exchange, s, args.outdir, t),
+        starts,
+        failed.setdefault("funding", []),
+    )
+    lost = _fill_from_archive(args.outdir, "funding", starts)
+    print(
+        f"funding +{added} rows ({len(starts)} symbols), {removed} stale files; no data for {lost}"
+    )
+
+    for interval in (i for i in args.intervals if i != "1d"):
+        kind = f"klines_{interval}"
+        removed = prune(args.outdir, kind, list(starts), start)
+        added = _sync_all(
+            kind, _klines_fn(exchange, args.outdir, interval), starts, failed.setdefault(kind, [])
+        )
+        lost = _fill_from_archive(args.outdir, kind, starts)
+        print(f"{kind} +{added} rows, {removed} stale files deleted; no data for {lost}")
+
+    removed = prune(args.outdir, "metrics", list(starts), start)
+    today = pd.Timestamp.now(tz="UTC")
+    added = _sync_all(
+        "metrics",
+        lambda s, t: sync_metrics(s, args.outdir, pd.Timestamp(t, unit="ms"), today),
+        starts,
+        failed.setdefault("metrics", []),
+    )
+    print(f"metrics +{added} rows, {removed} stale files deleted")
+    _finish(failed, args.strict)
+
+
+def _finish(failed: dict[str, list[str]], strict: bool) -> None:
+    """Print the network failures last (the runner logs the tail of the output); with
+    ``strict``, exit 2 when there are any."""
+    line = failure_line(failed)
+    print(line or "all symbols synced")
+    if line and strict:
+        raise SystemExit(2)
+
+
+if __name__ == "__main__":
+    main()
