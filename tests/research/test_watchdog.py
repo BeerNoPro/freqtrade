@@ -155,6 +155,20 @@ def test_credentials_from_env_file(tmp_path: Path) -> None:
     assert wd.credentials(tmp_path / "none.env", environ={}) is None
 
 
+def test_send_one_message_for_deploy_sh(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / ".env").write_text("TELEGRAM_BOT_TOKEN=1:x\nTELEGRAM_CHAT_ID=7\n", encoding="utf-8")
+    sent: list[tuple[str, str, str]] = []
+
+    def sender(token: str, chat: str):
+        return lambda text: sent.append((token, chat, text))
+
+    monkeypatch.setattr(wd, "telegram_sender", sender)
+    assert wd.main(["--app", str(tmp_path), "--send", "DEPLOY OK · 2026-10-17"]) == 0
+    assert sent == [("1:x", "7", "DEPLOY OK · 2026-10-17")]
+    (tmp_path / ".env").unlink()
+    assert wd.main(["--app", str(tmp_path), "--send", "x"]) == 1  # no token: nothing sent
+
+
 def test_dry_run_prints_and_sends_nothing(tmp_path: Path, capsys, monkeypatch) -> None:
     app = _server(tmp_path, product_at="2026-10-17 10:00:00")
     monkeypatch.setattr(wd, "APP", app)
