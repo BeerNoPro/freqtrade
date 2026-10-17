@@ -24,8 +24,27 @@ def test_network_errors_are_failures_and_rejections_are_not() -> None:
     start = pd.Timestamp("2025-01-01", tz="UTC")
     starts = dict.fromkeys(["AUSDT", "DNSUSDT", "SLOWUSDT", "GONEUSDT", "BUSDT"], start)
     failed: list[str] = []
-    assert _sync_all("metrics", fn, starts, failed) == 10
+    waited: list[float] = []
+    assert _sync_all("metrics", fn, starts, failed, waits=(1.0, 2.0), sleep=waited.append) == 10
     assert failed == ["DNSUSDT", "SLOWUSDT"]
+    assert waited == [1.0, 2.0, 1.0, 2.0]  # network errors retried, the rejection is not
+
+
+def test_a_short_network_drop_is_retried_not_lost() -> None:
+    """A 10-second Wi-Fi drop must not lose a symbol: the same symbol is tried again."""
+    calls = {"n": 0}
+
+    def flaky(symbol: str, start_ms: int) -> int:
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise requests.ConnectionError("getaddrinfo failed")
+        return 7
+
+    failed: list[str] = []
+    waited: list[float] = []
+    starts = {"AUSDT": pd.Timestamp("2025-01-01", tz="UTC")}
+    assert _sync_all("metrics", flaky, starts, failed, sleep=waited.append) == 7
+    assert failed == [] and waited == [10.0, 30.0]
 
 
 def test_failure_line_and_strict_exit(capsys) -> None:

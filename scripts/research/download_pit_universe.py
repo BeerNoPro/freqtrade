@@ -17,6 +17,7 @@ window plus warmup.
 import argparse
 import json
 import logging
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -42,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 
 NETWORK_ERRORS = (ccxt.NetworkError, requests.ConnectionError, requests.Timeout)
+RETRY_WAITS = (10.0, 30.0, 90.0)  # seconds; a Wi-Fi drop on the research laptop lasts 7-15 s
 
 
 def _sync_all(
@@ -49,19 +51,32 @@ def _sync_all(
     fn: Callable[[str, int], int],
     starts: dict[str, pd.Timestamp],
     failed: list[str] | None = None,
+    waits: tuple[float, ...] = RETRY_WAITS,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> int:
-    """Run ``fn(symbol, start_ms)`` for every symbol; errors are logged and skipped. Symbols lost
-    to a network error (DNS, timeout, connection) are appended to ``failed``: a rerun fetches
-    them. Exchange rejections (a delisted symbol the API no longer knows) are not: the monthly
-    archive fallback covers those."""
+    """Run ``fn(symbol, start_ms)`` for every symbol; errors are logged and skipped. A network
+    error (DNS, timeout, connection) is retried after each of ``waits``; a symbol still lost is
+    appended to ``failed`` (a rerun fetches it). Exchange rejections (a delisted symbol the API
+    no longer knows) are neither retried nor counted: the monthly archive fallback covers them."""
     added = 0
     for i, (symbol, start) in enumerate(starts.items(), 1):
-        try:
-            added += fn(symbol, int(start.timestamp() * 1000))
-        except (ccxt.BaseError, requests.RequestException) as e:
-            logger.warning("%s %s failed: %s", label, symbol, e)
-            if failed is not None and isinstance(e, NETWORK_ERRORS):
-                failed.append(symbol)
+        for attempt in range(len(waits) + 1):
+            try:
+                added += fn(symbol, int(start.timestamp() * 1000))
+                break
+            except NETWORK_ERRORS as e:
+                if attempt < len(waits):
+                    logger.warning(
+                        "%s %s: network error, retry in %.0fs: %s", label, symbol, waits[attempt], e
+                    )
+                    sleep(waits[attempt])
+                    continue
+                logger.warning("%s %s failed: %s", label, symbol, e)
+                if failed is not None:
+                    failed.append(symbol)
+            except (ccxt.BaseError, requests.RequestException) as e:
+                logger.warning("%s %s failed: %s", label, symbol, e)
+                break
         if i % 100 == 0:
             logger.info("%s: %d/%d symbols", label, i, len(starts))
     return added
