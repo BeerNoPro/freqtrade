@@ -1,0 +1,12 @@
+# Watchdog of the bot (scripts/research/watchdog.py): Telegram message when the runner or the
+# recorder stops, the disk or memory runs low, or a daily job fails. Runs with the system python3
+# and the standard library only, so it works even when the bot's venv is broken.
+[Unit]
+Description=Signal bot: watchdog (runner, recorder, disk, memory, daily jobs)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/signal-bot/scripts/research/watchdog.py
+TimeoutStartSec=2min

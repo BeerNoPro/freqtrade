@@ -100,6 +100,9 @@ def test_not_safe_while_the_runner_is_inside_a_cycle(tmp_path: Path) -> None:
         ("requirements.txt", "yes yes no"),
         ("deploy/systemd/signal-forward.service", "yes yes yes"),
         ("deploy/deploy.sh\nfreqtrade/main.py", "no no no"),
+        ("scripts/research/watchdog.py\nscripts/research/deploy_preflight.py", "no no no"),
+        ("scripts/research/watchdog.py\nscripts/research/mce/messages.py", "yes no no"),
+        ("deploy/systemd/signal-watchdog.timer", "yes yes yes"),
     ],
 )
 def test_services_restarted_by_a_change(tmp_path: Path, changed: str, expected: str) -> None:
