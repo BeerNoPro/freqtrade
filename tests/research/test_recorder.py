@@ -269,6 +269,63 @@ def test_read_day_merges_compacted_and_open_rows(tmp_path: Path) -> None:
     assert read_day(tmp_path, "book_ticker", "2026-10-09").empty
 
 
+def _messy_day(stream_dir: Path, day: str) -> list[Path]:
+    """Hourly part files with the cases that change dtypes: a column missing in some hours, a
+    column all null in one hour, ints next to nulls, numeric strings, a text column, a cut line."""
+    hours = {
+        "part-00.jsonl": [
+            {"taken": 1, "symbol": "BTCUSDT", "price": "81578.20", "qty": "13.117", "id": 7},
+            {"taken": 2, "symbol": "ETHUSDT", "price": "2429.07", "qty": "0.5", "id": 8},
+        ],
+        "part-01.jsonl": [
+            {"taken": 3, "symbol": "BTCUSDT", "price": "81600.1", "qty": "1", "id": None},
+            {"taken": 4, "symbol": "SOLUSDT", "price": "150", "qty": "2", "extra": "x"},
+        ],
+        "part-02.jsonl": [{"taken": 5, "symbol": "BTCUSDT", "price": "n/a", "qty": "3", "id": 9}],
+        "part-03.jsonl": [
+            {"taken": 6, "symbol": "BTCUSDT", "price": "1.5", "qty": "4", "id": None}
+        ],
+    }
+    day_dir = stream_dir / day
+    day_dir.mkdir(parents=True)
+    paths = []
+    for name, rows in hours.items():
+        path = day_dir / name
+        text = "".join(json.dumps(r) + "\n" for r in rows)
+        if name == "part-03.jsonl":
+            text += '{"taken": 7, "symbol": "BT'  # a line cut by a crash
+        path.write_text(text, encoding="utf-8")
+        paths.append(path)
+    return paths
+
+
+def test_compaction_frame_equals_the_one_built_from_all_rows(tmp_path: Path) -> None:
+    """The hour-by-hour build (memory fix, 2026-10-17) gives the same typed frame as building it
+    from the list of every row of the day, which took 1.6 GB on a day of the order book."""
+    parts = _messy_day(tmp_path / "depth", "2026-10-10")
+    rows, bad = recorder._read_parts(parts)
+    old = recorder._typed(pd.DataFrame(rows))
+    frame, bad_new = recorder._parts_frame(parts)
+    new = recorder._typed(frame)
+    assert bad == bad_new == 1
+    pd.testing.assert_frame_equal(new, old)
+    assert list(new.columns) == ["taken", "symbol", "price", "qty", "id", "extra"]
+    assert pd.api.types.is_string_dtype(new["price"])  # "n/a" keeps the column as text
+    assert str(new["qty"].dtype) == "float64" and new["id"].isna().sum() == 3
+    assert recorder._read_column(parts, "taken") == [1, 2, 3, 4, 5, 6]
+    assert recorder._read_column(parts, "extra") == [None, None, None, "x", None, None]
+
+
+def test_compact_day_output_is_unchanged_by_the_memory_fix(tmp_path: Path) -> None:
+    parts = _messy_day(tmp_path / "depth", "2026-10-10")
+    rows, _ = recorder._read_parts(parts)
+    expected = recorder._typed(pd.DataFrame(rows)).sort_values("taken", kind="stable")
+    assert recorder.compact_day(tmp_path / "depth", "2026-10-10") == 6
+    got = pd.read_parquet(tmp_path / "depth" / "2026-10-10.parquet")
+    pd.testing.assert_frame_equal(got, expected.reset_index(drop=True))
+    assert not (tmp_path / "depth" / "2026-10-10").exists()
+
+
 def test_heartbeat_logs_a_long_silence_as_a_gap(tmp_path: Path) -> None:
     writer, path = PartWriter(tmp_path), tmp_path / ".heartbeat"
     beat(path, writer, 1_000_000, 120_000)  # first beat ever: nothing to compare

@@ -170,14 +170,51 @@ class PartWriter:
 def _read_parts(parts: list[Path]) -> tuple[list[dict], int]:
     rows, bad = [], 0
     for part in parts:
+        part_rows, part_bad = _read_part(part)
+        rows += part_rows
+        bad += part_bad
+    return rows, bad
+
+
+def _read_part(part: Path) -> tuple[list[dict], int]:
+    rows, bad = [], 0
+    for line in part.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:  # a line cut by a crash
+            bad += 1
+    return rows, bad
+
+
+def _parts_frame(parts: list[Path]) -> tuple[pd.DataFrame, int]:
+    """The rows of ``parts`` as one untyped frame, built one hourly file at a time: a day of the
+    order book (~1.2 million rows) never exists as Python dicts all at once (it took 1.6 GB of
+    RAM). Same columns, order and values as ``pd.DataFrame(_read_parts(parts)[0])`` once typed."""
+    frames, bad = [], 0
+    for part in parts:
+        rows, part_bad = _read_part(part)
+        bad += part_bad
+        if rows:
+            frames.append(pd.DataFrame(rows))
+    if not frames:
+        return pd.DataFrame(), bad
+    return pd.concat(frames, ignore_index=True, sort=False), bad
+
+
+def _read_column(parts: list[Path], col: str) -> list:
+    """One field of every row of ``parts`` (None where absent), without keeping the rows."""
+    values = []
+    for part in parts:
         for line in part.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             try:
-                rows.append(json.loads(line))
-            except json.JSONDecodeError:  # a line cut by a crash
-                bad += 1
-    return rows, bad
+                values.append(json.loads(line).get(col))
+            except json.JSONDecodeError:
+                continue
+    return values
 
 
 def _typed(df: pd.DataFrame) -> pd.DataFrame:
@@ -197,10 +234,10 @@ def compact_day(stream_dir: Path, day: str) -> int:
     parts = sorted(day_dir.glob("part-*.jsonl"))
     if not parts:
         return 0
-    rows, bad = _read_parts(parts)
+    df, bad = _parts_frame(parts)
     if bad:
         logger.warning("%s %s: skipped %d unreadable lines", stream_dir.name, day, bad)
-    df = _typed(pd.DataFrame(rows))
+    df = _typed(df)
     out = stream_dir / f"{day}.parquet"
     if out.exists():
         df = pd.concat([pd.read_parquet(out), df], ignore_index=True)
@@ -228,8 +265,7 @@ def read_day(outdir: Path, stream: str, day: str) -> pd.DataFrame:
         frames.append(pd.read_parquet(out))
     parts = sorted((stream_dir / day).glob("part-*.jsonl")) if (stream_dir / day).is_dir() else []
     if parts:
-        rows, _ = _read_parts(parts)
-        frames.append(_typed(pd.DataFrame(rows)))
+        frames.append(_typed(_parts_frame(parts)[0]))
     if not frames:
         return pd.DataFrame()
     df = _typed(pd.concat(frames, ignore_index=True))
@@ -286,8 +322,7 @@ def _day_times(stream_dir: Path, day: str) -> tuple[pd.Series, str]:
     day_dir = stream_dir / day
     files = sorted(day_dir.glob("part-*.jsonl")) if day_dir.is_dir() else []
     if files:
-        rows, _ = _read_parts(files)
-        parts.append(pd.Series([r.get(col) for r in rows], dtype="float64"))
+        parts.append(pd.Series(_read_column(files, col), dtype="float64"))
     state = "mixed" if out.exists() and files else "compacted" if out.exists() else "open"
     times = pd.concat(parts, ignore_index=True) if parts else pd.Series(dtype="float64")
     return times.dropna().astype("int64"), state
