@@ -41,14 +41,27 @@ from mce.universe import is_candidate, point_in_time_members
 logger = logging.getLogger(__name__)
 
 
-def _sync_all(label: str, fn: Callable[[str, int], int], starts: dict[str, pd.Timestamp]) -> int:
-    """Run ``fn(symbol, start_ms)`` for every symbol; network errors are logged and skipped."""
+NETWORK_ERRORS = (ccxt.NetworkError, requests.ConnectionError, requests.Timeout)
+
+
+def _sync_all(
+    label: str,
+    fn: Callable[[str, int], int],
+    starts: dict[str, pd.Timestamp],
+    failed: list[str] | None = None,
+) -> int:
+    """Run ``fn(symbol, start_ms)`` for every symbol; errors are logged and skipped. Symbols lost
+    to a network error (DNS, timeout, connection) are appended to ``failed``: a rerun fetches
+    them. Exchange rejections (a delisted symbol the API no longer knows) are not: the monthly
+    archive fallback covers those."""
     added = 0
     for i, (symbol, start) in enumerate(starts.items(), 1):
         try:
             added += fn(symbol, int(start.timestamp() * 1000))
         except (ccxt.BaseError, requests.RequestException) as e:
             logger.warning("%s %s failed: %s", label, symbol, e)
+            if failed is not None and isinstance(e, NETWORK_ERRORS):
+                failed.append(symbol)
         if i % 100 == 0:
             logger.info("%s: %d/%d symbols", label, i, len(starts))
     return added
@@ -86,6 +99,16 @@ def first_member_dates(
     )
     members = members.loc[:, members.any()]
     return {s: members.index[members[s]].min() for s in sorted(members.columns)}
+
+
+def failure_line(failed: dict[str, list[str]], show: int = 10) -> str:
+    """One summary line of the symbols lost to network errors per kind ('' when none)."""
+    parts = []
+    for kind, symbols in failed.items():
+        if symbols:
+            more = f" (+{len(symbols) - show} more)" if len(symbols) > show else ""
+            parts.append(f"{kind} {len(symbols)}: {' '.join(symbols[:show])}{more}")
+    return ("FAILED (network, rerun to fetch) " + "; ".join(parts)) if parts else ""
 
 
 def estimate_volume(
@@ -133,7 +156,13 @@ def main() -> None:
         action="store_true",
         help="sync daily candles only, print the volume of the other kinds and stop",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 2 when a symbol was lost to a network error (the runner's daily sync omits it)",
+    )
     args = parser.parse_args()
+    failed: dict[str, list[str]] = {}
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     start = pd.Timestamp(args.start, tz="UTC")
@@ -154,7 +183,12 @@ def main() -> None:
 
     removed = prune(args.outdir, "klines_1d", candidates, start)
     every = dict.fromkeys(candidates, start)
-    added = _sync_all("klines_1d", lambda s, t: sync_klines(exchange, s, args.outdir, t), every)
+    added = _sync_all(
+        "klines_1d",
+        lambda s, t: sync_klines(exchange, s, args.outdir, t),
+        every,
+        failed.setdefault("klines_1d", []),
+    )
     lost = _fill_from_archive(args.outdir, "klines_1d", every)
     print(f"klines_1d +{added} rows, {removed} stale files deleted; no data for {lost}")
 
@@ -168,9 +202,15 @@ def main() -> None:
         print(f"plan for {args.outdir} from {args.start}: {est}")
         print(f"  funding and klines {args.intervals} for {est['symbols']} symbols; metrics:")
         print(f"  {est['metrics_files_missing']} daily archive files to fetch")
+        _finish(failed, args.strict)
         return
     removed = prune(args.outdir, "funding", list(starts), start)
-    added = _sync_all("funding", lambda s, t: sync_funding(exchange, s, args.outdir, t), starts)
+    added = _sync_all(
+        "funding",
+        lambda s, t: sync_funding(exchange, s, args.outdir, t),
+        starts,
+        failed.setdefault("funding", []),
+    )
     lost = _fill_from_archive(args.outdir, "funding", starts)
     print(
         f"funding +{added} rows ({len(starts)} symbols), {removed} stale files; no data for {lost}"
@@ -179,7 +219,9 @@ def main() -> None:
     for interval in (i for i in args.intervals if i != "1d"):
         kind = f"klines_{interval}"
         removed = prune(args.outdir, kind, list(starts), start)
-        added = _sync_all(kind, _klines_fn(exchange, args.outdir, interval), starts)
+        added = _sync_all(
+            kind, _klines_fn(exchange, args.outdir, interval), starts, failed.setdefault(kind, [])
+        )
         lost = _fill_from_archive(args.outdir, kind, starts)
         print(f"{kind} +{added} rows, {removed} stale files deleted; no data for {lost}")
 
@@ -189,8 +231,19 @@ def main() -> None:
         "metrics",
         lambda s, t: sync_metrics(s, args.outdir, pd.Timestamp(t, unit="ms"), today),
         starts,
+        failed.setdefault("metrics", []),
     )
     print(f"metrics +{added} rows, {removed} stale files deleted")
+    _finish(failed, args.strict)
+
+
+def _finish(failed: dict[str, list[str]], strict: bool) -> None:
+    """Print the network failures last (the runner logs the tail of the output); with
+    ``strict``, exit 2 when there are any."""
+    line = failure_line(failed)
+    print(line or "all symbols synced")
+    if line and strict:
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":
