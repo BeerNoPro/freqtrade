@@ -12,10 +12,16 @@ if [[ "$cmd" =~ ^deploy\ ([0-9a-f]{40})$ ]]; then
     out="$APP/user_data/logs/deploy-last.out"
     rc_file="$out.rc"
     rm -f "$rc_file"
-    # run a copy (the deploy checks out new code, which rewrites deploy.sh itself), detached
-    # from this SSH session: a dropped connection must not stop a deploy halfway
+    git -C "$APP" fetch --quiet origin main
+    if ! git -C "$APP" merge-base --is-ancestor "$sha" origin/main; then
+        echo "refused: $sha is not on origin/main"
+        exit 2
+    fi
+    # the commit's own deploy.sh (a change to the deploy steps applies to the deploy that brings
+    # it), run from a copy, detached from this SSH session: a dropped connection must not stop a
+    # deploy halfway
     copy="$(mktemp /tmp/deploy.XXXXXX.sh)"
-    cp "$APP/deploy/deploy.sh" "$copy"
+    git -C "$APP" show "$sha:deploy/deploy.sh" >"$copy"
     setsid nohup bash -c 'bash "$0" "$1"; echo $? > "$2"; rm -f "$0"' "$copy" "$sha" "$rc_file" \
         >"$out" 2>&1 </dev/null &
     tail --pid="$!" -n +1 -f "$out"

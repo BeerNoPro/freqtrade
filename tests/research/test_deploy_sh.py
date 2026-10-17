@@ -2,6 +2,7 @@
 restarts, run through bash with the clock and the logs faked (no git, no systemd)."""
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -39,7 +40,12 @@ def _bash(body: str, tmp_path: Path) -> subprocess.CompletedProcess:
         "systemctl() { return 0; }\n" + body
     )
     return subprocess.run(
-        [BASH, "-c", script], capture_output=True, text=True, timeout=60, check=False
+        [BASH, "-c", script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",  # Vietnamese messages; the Windows default code page would garble them
+        timeout=60,
+        check=False,
     )
 
 
@@ -108,3 +114,26 @@ def test_not_safe_while_the_runner_is_inside_a_cycle(tmp_path: Path) -> None:
 def test_services_restarted_by_a_change(tmp_path: Path, changed: str, expected: str) -> None:
     r = _bash(f"plan_services $'{changed}'\necho $FORWARD $RECORDER $UNITS\n", tmp_path)
     assert r.stdout.strip() == expected, r.stderr
+
+
+@pytest.mark.parametrize(
+    ("forward", "recorder", "text"),
+    [
+        ("yes", "yes", "khởi động lại: runner, bộ ghi"),
+        ("yes", "no", "khởi động lại: runner"),
+        ("no", "yes", "khởi động lại: bộ ghi"),
+        ("no", "no", "không cần khởi động lại service"),
+    ],
+)
+def test_deploy_message_names_the_restarted_services(
+    tmp_path: Path, forward: str, recorder: str, text: str
+) -> None:
+    r = _bash(f"FORWARD={forward} RECORDER={recorder}\nrestarted\n", tmp_path)
+    assert r.stdout.strip() == text, r.stderr
+
+
+def test_deploy_time_stamp_shows_utc_and_vietnam_time(tmp_path: Path) -> None:
+    r = _bash("stamp\n", tmp_path)
+    assert re.fullmatch(
+        r"\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC \(\d{2}:\d{2} giờ VN\)", r.stdout.strip()
+    )

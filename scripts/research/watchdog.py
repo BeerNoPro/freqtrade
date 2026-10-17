@@ -14,6 +14,7 @@ Standard library only and run by the system ``python3``: it keeps working when t
 or the runner is broken. Telegram token and chat id: the repository ``.env`` (as the runner).
 
     python3 scripts/research/watchdog.py [--dry-run]   # --dry-run prints instead of sending
+    python3 scripts/research/watchdog.py --send "text"   # one message (deploy.sh after a deploy)
 """
 
 import argparse
@@ -286,8 +287,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Watchdog of the bot on the VPS")
     parser.add_argument("--dry-run", action="store_true", help="print the messages, send none")
     parser.add_argument("--app", type=Path, default=APP, help="bot checkout (default: this repo)")
+    parser.add_argument("--send", metavar="TEXT", help="send one message and exit (deploy.sh)")
     args = parser.parse_args(argv)
     app = args.app
+    if args.send is not None:
+        found_creds = credentials(app / ".env")
+        if found_creds is None:
+            print("no Telegram token / chat id in .env: nothing sent", file=sys.stderr)
+            return 1
+        try:
+            telegram_sender(*found_creds)(args.send)
+        except RuntimeError as e:
+            print(f"send failed: {e}", file=sys.stderr)
+            return 1
+        return 0
     machine = Machine(
         app=app,
         now=_now(),

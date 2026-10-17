@@ -39,6 +39,26 @@ trap cleanup EXIT
 
 log() { echo "$(date -u +%FT%TZ) $*" | tee -a "$LOG"; }
 
+stamp() { echo "$(date -u '+%Y-%m-%d %H:%M UTC') ($(TZ=Asia/Ho_Chi_Minh date '+%H:%M') giờ VN)"; }
+
+# one Telegram message with the bot's token (watchdog.py --send: system python3, standard library)
+notify() {
+    /usr/bin/python3 "$APP/scripts/research/watchdog.py" --app "$APP" --send "$1" >/dev/null 2>&1 \
+        || log "telegram notice not sent"
+}
+
+# what a successful deploy restarted, for the message
+restarted() {
+    local what=""
+    if [ "$FORWARD" = yes ]; then what="runner"; fi
+    if [ "$RECORDER" = yes ]; then what="${what:+$what, }bộ ghi"; fi
+    if [ -n "$what" ]; then echo "khởi động lại: $what"; else echo "không cần khởi động lại service"; fi
+}
+
+deploy_message() {  # $1 commit sha
+    echo "DEPLOY OK · $(stamp) · ${1:0:7} $(git log -1 --format=%s "$1") · $(restarted)"
+}
+
 # last runner cycle finished: its last 'store synced' line is followed by a 'product:' line
 runner_idle() {
     tail -n 300 "$FWD_LOG" 2>/dev/null | grep -E ' INFO (store synced|product): ' | tail -n 1 \
@@ -140,6 +160,7 @@ main() {
     if ! (cd "$WT/scripts/research" && "$check_py" deploy_preflight.py \
         --research "$APP/user_data/research" --env-file "$APP/.env"); then
         log "preflight failed for $sha: the server keeps $old"
+        notify "DEPLOY LỖI · $(stamp) · ${sha:0:7}: kiểm tra trước thất bại, VPS vẫn chạy ${old:0:7}"
         return 1
     fi
 
@@ -147,6 +168,7 @@ main() {
     until safe_now; do
         if [ "$waited" -ge "$MAX_WAIT_MIN" ]; then
             log "no safe moment within $MAX_WAIT_MIN min for $sha: the server keeps $old"
+            notify "DEPLOY LỖI · $(stamp) · ${sha:0:7}: không có lúc an toàn trong $MAX_WAIT_MIN phút, VPS vẫn chạy ${old:0:7}"
             return 1
         fi
         sleep 60
@@ -165,16 +187,19 @@ main() {
     restart_services
     if [ "$FORWARD" = no ] && [ "$RECORDER" = no ]; then
         log "deployed $sha (no service code changed, nothing restarted)"
+        notify "$(deploy_message "$sha")"
         return 0
     fi
     if verify "$t0"; then
         # the previous venv was only kept for this deploy's rollback: 650 MB back on a 10 GB disk
         rm -rf "$APP/.venv-prev"
         log "deployed $sha"
+        notify "$(deploy_message "$sha")"
         return 0
     fi
 
     log "verify failed for $sha within ${VERIFY_SEC}s: rolling back to $old"
+    notify "DEPLOY LỖI · $(stamp) · ${sha:0:7}: chạy thử không đạt trong ${VERIFY_SEC}s, đã quay về ${old:0:7}"
     git checkout --quiet --detach "$old"
     if [ -n "$venv_new" ]; then
         rm -rf "$APP/.venv-failed"

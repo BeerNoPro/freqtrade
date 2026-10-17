@@ -82,7 +82,14 @@ nằm trên VPS:
 4. Sau khi đổi: runner phải ghi dòng `product:` mới (nó chạy một chu kỳ ngay khi khởi động), bộ ghi phải có nhịp
    tim mới, trong 10 phút. Không đạt → **tự quay về commit cũ** (cả venv cũ), job báo đỏ.
 
-Mỗi lần deploy ghi một dòng vào `~/signal-bot/user_data/logs/deploys.log`.
+5. **Báo Telegram:**
+   - Thành công: `DEPLOY OK · <giờ UTC> (giờ VN) · <commit> <tiêu đề> · khởi động lại: …`.
+   - Lỗi (kiểm tra trước thất bại, không có lúc an toàn, chạy thử không đạt và đã quay về): `DEPLOY LỖI · …`.
+   - Gửi bằng `watchdog.py --send`, chỉ dùng thư viện chuẩn.
+
+`ssh_command.sh` kiểm tra commit có trên `origin/main` rồi chạy `deploy.sh` **của chính commit đó**, nên thay đổi ở các
+bước deploy có hiệu lực ngay ở lần deploy mang nó. Riêng thay đổi ở `ssh_command.sh` thì có hiệu lực từ lần sau, vì
+bản đang nằm trên VPS là bản chạy. Mỗi lần deploy ghi một dòng vào `~/signal-bot/user_data/logs/deploys.log`.
 
 ### Cài đặt GitHub (một lần)
 
